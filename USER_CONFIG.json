@@ -1,0 +1,11 @@
+{
+  "language": "en",
+  "location": "job", "_comment_location": "job/user",
+  "paths": {
+    "data": "data",
+    "outputs": "outputs"
+  },
+  "scraping": {
+    "company_website_timeout": 30
+  }
+}

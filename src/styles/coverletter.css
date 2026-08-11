@@ -1,0 +1,33 @@
+/* ===== Cover Letter Styles ===== */
+
+@page { size: A4; margin: 1.6cm 1.7cm; }
+
+:root {
+    --primary: #1f4e79;
+    --text: #2f343c;    /* align with CV secondary text */
+    --muted: #6b7280;
+    --border: #d9dde3;  /* align with CV border */
+    --light: #f7f9fb;   /* align with CV light */
+}
+
+body {
+    font-family: Garamond, sans-serif; /* align with CV font */
+    font-size: 11.5pt;
+    line-height: 1.5;                 /* align with CV */
+    color: #16181a;                   /* align with CV ink */
+    margin: 0 auto;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+}
+
+.title { font-size: 25pt; font-weight: 700; text-align: center; margin-bottom: 6px; color: #16181a; }
+.subtitle { font-size: 12pt; color: var(--primary); margin-bottom: 10px; text-align: center; font-weight: 600; }
+.section-heading { font-size: 11pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0; margin-top: 18px; margin-bottom: 12px; color: var(--primary); border-bottom: 1.5px solid #5f7f9f; padding-bottom: 4px; text-align: center; }
+.normal { margin: 0 0 8px 0; }
+.bold { font-weight: 700; color: #16181a; }
+.italic { font-style: italic; color: var(--muted); }
+p { margin: 0 0 8px 0; }
+ul { margin: 8px 0 12px 0; padding-left: 18px; }
+li { margin-bottom: 5px; padding-left: 1.5px; }
+li::marker { color: var(--primary); }
+code { background: #f3f4f6; color: #16181a; padding: 2px 5px; border-radius: 3px; font-size: 0.92em; }

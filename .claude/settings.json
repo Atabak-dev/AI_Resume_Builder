@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./data/**)",
+      "Edit(./data/**)",
+      "Read(./outputs/**)",
+      "Edit(./outputs/**)"
+    ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "allowRead": [
+        "./data",
+        "./outputs"
+      ]
+    }
+  }
+}

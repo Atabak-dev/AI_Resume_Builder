@@ -1,0 +1,9 @@
+data/*
+outputs/*
+.env
+src/pipeline/__pycache__/
+src/utils/__pycache__/
+test.*
+logs/*
+application.log
+.vscode/*
