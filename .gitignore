@@ -7,4 +7,4 @@ test.*
 logs/*
 application.log
 .vscode/*
-.claude/
+.claude/*
