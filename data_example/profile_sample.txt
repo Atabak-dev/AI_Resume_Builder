@@ -1,0 +1,23 @@
+I am a data engineer with about six years of experience, most of it spent making
+unreliable data pipelines boring. My background is in statistics rather than computer
+science, which is probably why I care more about whether a number is correct than about
+the elegance of the system producing it.
+
+What I enjoy most is the part of the job that sits between engineering and the people who
+depend on the data: sitting with an operations team, working out what they actually need
+to see, and then building something that keeps working after I stop looking at it. The
+work I am proudest of is rarely the most technically interesting — it is usually the
+pipeline that quietly stopped waking people up at night.
+
+I work best in small teams where ownership is clear and I can follow a problem from
+ingestion through to the dashboard someone is staring at. I have mentored two junior
+engineers and found that I like it more than I expected. I am comfortable being the person
+who says a deadline is unrealistic, and equally comfortable being wrong about that.
+
+Outside work I maintain an open-source dataset on regional rail punctuality, mostly
+because I got annoyed at a train and decided to quantify it. It taught me more about
+handling messy real-world feeds than any job has.
+
+I am looking for a role where data quality is treated as a first-class concern rather
+than something to fix later, and where I can keep working close to the people using
+what I build.

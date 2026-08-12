@@ -1,0 +1,28 @@
+{
+  "basics": {
+    "name": "Jane Doe",
+    "label": "Senior Data Engineer",
+    "email": "jane.doe@example.com",
+    "phone": "+49 151 00000000",
+    "url": "https://example.com",
+    "location": {
+      "address": "Musterstraße 1",
+      "postalCode": "10115",
+      "city": "Berlin",
+      "region": "Berlin",
+      "country": "Germany"
+    },
+    "profiles": [
+      {
+        "network": "LinkedIn",
+        "username": "jane-doe",
+        "url": "https://www.linkedin.com/in/jane-doe"
+      },
+      {
+        "network": "GitHub",
+        "username": "janedoe",
+        "url": "https://github.com/janedoe"
+      }
+    ]
+  }
+}

@@ -50,6 +50,10 @@ class Generator_Handler:
         self.prompts = llm_config
         logger.debug("LLM configuration loaded")
 
+        # Set by make_cv(): the generated CV before personal info is merged in.
+        # This is the only CV variant that may be sent back to the LLM.
+        self.cv_markdown_raw = ""
+
         self.BOLD_RE = re.compile(r"\*\*(.*?)\*\*")
         self.ITALIC_RE = re.compile(r"[\*_](.*?)[\*_]")
         self.CODE_RE = re.compile(r"`(.*?)`")
@@ -277,6 +281,11 @@ class Generator_Handler:
             error_msg = "LLM did not return a valid response for CV generation"
             logger.error(error_msg)
             raise ValueError(error_msg)
+
+        # Keep the LLM's own output, before any identity is merged in. test_cv()
+        # sends the CV back to the LLM for scoring, so it must be given this
+        # version - never the one below, which carries name/e-mail/phone/location.
+        self.cv_markdown_raw = cv_markdown
 
         # Add personal info to the generated CV
         logger.info("Adding personal information to CV")
@@ -710,7 +719,10 @@ class Generator_Handler:
         """Score CV compatibility with job description and identify missing skills using LLM.
 
         Args:
-            cv: The generated CV markdown string
+            cv: The generated CV markdown string, **before** personal info was
+                merged in - pass ``self.cv_markdown_raw``, not the return value
+                of ``make_cv()``. The CV is sent to the LLM verbatim, so the
+                identity-bearing version must never be used here
             job: JobInfo instance containing job requirements
             show_missing_skills: Whether to identify and save missing skills to a file
 

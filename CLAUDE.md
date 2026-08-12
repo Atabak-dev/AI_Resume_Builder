@@ -49,6 +49,11 @@ Single-run interactive CLI. One invocation = one job application. Flow in
    the job description before it reaches the LLM. This is the privacy contract of the project:
    **the candidate's identity never goes to the LLM.** Name/email/phone/location are re-injected
    locally into the generated Markdown afterwards.
+
+   The contract binds anything that sends generated text *back* to the LLM. `make_cv()` stashes
+   the pre-injection Markdown on `Generator_Handler.cv_markdown_raw`, and `test_cv()` must be
+   given that, never `make_cv()`'s return value — the latter carries the contact block. Any new
+   round-trip (re-scoring, revision passes) has the same obligation.
 3. **Extract** — `LLM_Handeler.model_parser()` sends a Pydantic-derived JSON schema plus context
    and returns a populated model (`JobInfo`, `CompanyInfo`, `CVScoreResponse`).
 4. **Generate** — `Generator_Handler` produces CV and cover-letter Markdown, then HTML, then PDF.
@@ -107,14 +112,16 @@ exists to make output look less machine-generated; keep it in the path when addi
 ## Data and outputs
 
 **`data/` and `outputs/` hold the user's real personal data and are off-limits.**
-`.claude/settings.json` denies `Read` on both (and `Edit` on `data/**`). Don't work around it
-(no `cat`, no `python -c` dumps) — use `data/cv_sample.json` when you need to know the shape of a
-file, and ask the user to paste redacted snippets if you need more.
+`.claude/settings.json` (local-only, gitignored) denies `Read` on both (and `Edit` on `data/**`).
+Don't work around it (no `cat`, no `python -c` dumps) — use
+[data_example/](data_example/) when you need to know the shape of a file, and ask the user to
+paste redacted snippets if you need more.
 
-`data/` and `outputs/` are gitignored (real personal data). `data/cv_sample.json` is the
-committed reference for the `cv.json` shape (`skills`, `work`, `education`, `projects`,
-`certificates`, `publications`, `languages`, `interests`, `references`, `meta`);
-`personal_info.json` uses a `basics` object (`name`, `email`, `phone`, `location`, `profiles`).
+`data/` and `outputs/` are gitignored (real personal data). [data_example/](data_example/) is the
+committed, fictional reference: `cv_sample.json` for the `cv.json` shape (`skills`, `work`,
+`education`, `projects`, `certificates`, `publications`, `languages`, `interests`, `references`,
+`meta`), `personal_info_sample.json` for `personal_info.json` (a `basics` object — `name`,
+`email`, `phone`, `location`, `profiles`), and `profile_sample.txt` for `profile.txt`.
 
 Each run creates `outputs/<yymmdd-HHMM>_<company>/` containing `cv.md`, `coverletter.md`,
 `job.yaml`, `missing_skills.txt`, the two PDFs, and `raw/` (`cv_raw.html`, `job_description.txt`).

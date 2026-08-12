@@ -457,8 +457,11 @@ def main():
     logger.info("Testing CV compatibility with job requirements")
     print('\n=== Testing CV Compatibility ===')
     try:
+        # Score the LLM's own output, not `cv_markdown` - the latter already has
+        # name, e-mail, phone and location merged in, and test_cv() sends the CV
+        # back to the LLM.
         cv_score_response = generator.test_cv(
-            cv=cv_markdown,
+            cv=generator.cv_markdown_raw,
             job=job,
             show_missing_skills=True
         )

@@ -1,0 +1,158 @@
+{
+  "meta": {
+    "version": "1.0",
+    "lastModified": "2026-01-15",
+    "note": "Keep this file as a superset of everything you have ever done. Each run selects the subset relevant to the target job; the LLM is instructed never to invent anything that is not written here."
+  },
+  "skills": [
+    {
+      "name": "Programming Languages",
+      "level": "Advanced",
+      "keywords": ["Python", "SQL", "TypeScript", "Bash"]
+    },
+    {
+      "name": "Data Engineering",
+      "level": "Advanced",
+      "keywords": ["Apache Airflow", "dbt", "Spark", "Kafka", "PostgreSQL"]
+    },
+    {
+      "name": "Cloud & Infrastructure",
+      "level": "Intermediate",
+      "keywords": ["AWS (S3, Lambda, ECS)", "Docker", "Terraform", "GitHub Actions"]
+    },
+    {
+      "name": "Machine Learning",
+      "level": "Intermediate",
+      "keywords": ["scikit-learn", "PyTorch", "MLflow", "feature engineering"]
+    }
+  ],
+  "work": [
+    {
+      "name": "Nordwind Analytics GmbH",
+      "position": "Senior Data Engineer",
+      "location": "Berlin, Germany",
+      "url": "https://example.com",
+      "startDate": "2023-04",
+      "endDate": "",
+      "summary": "Own the ingestion and transformation layer feeding the company's customer-facing reporting product, used by roughly 400 B2B accounts.",
+      "highlights": [
+        "Rebuilt the nightly batch pipeline on Airflow and dbt, cutting the end-to-end run from 6 hours to 40 minutes and removing a recurring class of silent partial-load failures.",
+        "Introduced contract tests between the ingestion layer and downstream marts, which brought data incidents reported by the support team down from about 8 per month to under 2.",
+        "Mentored two junior engineers through their first year, including code review standards and on-call onboarding.",
+        "Migrated 30+ legacy cron jobs into a single orchestrated DAG with alerting and retry semantics."
+      ]
+    },
+    {
+      "name": "Helioform Systems",
+      "position": "Data Engineer",
+      "location": "Munich, Germany",
+      "startDate": "2020-09",
+      "endDate": "2023-03",
+      "summary": "Second engineering hire on a four-person data team supporting logistics operations.",
+      "highlights": [
+        "Designed the warehouse schema (PostgreSQL, later Redshift) that all operational reporting still runs on.",
+        "Built a near-real-time Kafka consumer tracking shipment events, replacing a spreadsheet-based process used by the operations team.",
+        "Automated the monthly regulatory export, saving roughly two working days of manual effort per month."
+      ]
+    },
+    {
+      "name": "Universität Beispielstadt",
+      "position": "Research Assistant, Institute for Applied Statistics",
+      "location": "Beispielstadt, Germany",
+      "startDate": "2019-02",
+      "endDate": "2020-08",
+      "summary": "Part-time position alongside the Master's programme.",
+      "highlights": [
+        "Maintained the simulation codebase used by three concurrent research projects.",
+        "Co-authored a conference paper on missing-data imputation (see publications)."
+      ]
+    }
+  ],
+  "education": [
+    {
+      "institution": "Universität Beispielstadt",
+      "location": "Beispielstadt, Germany",
+      "area": "Statistics",
+      "studyType": "M.Sc.",
+      "startDate": "2018-10",
+      "endDate": "2020-09",
+      "score": "1.4",
+      "courses": [
+        "Computational Statistics",
+        "Statistical Learning",
+        "Time Series Analysis"
+      ]
+    },
+    {
+      "institution": "Fachhochschule Musterstadt",
+      "location": "Musterstadt, Germany",
+      "area": "Applied Mathematics",
+      "studyType": "B.Sc.",
+      "startDate": "2015-10",
+      "endDate": "2018-08",
+      "score": "1.8",
+      "courses": []
+    }
+  ],
+  "projects": [
+    {
+      "name": "openbahn-delays",
+      "description": "Open-source dataset and dashboard tracking regional rail punctuality, built from public GTFS feeds. Around 600 GitHub stars.",
+      "url": "https://example.com/openbahn-delays",
+      "startDate": "2022-01",
+      "endDate": "",
+      "roles": ["Author", "Maintainer"],
+      "keywords": ["Python", "DuckDB", "GTFS", "Streamlit"],
+      "highlights": [
+        "Handles roughly 2 million events per day on a single small VM.",
+        "Cited in two local newspaper articles on regional transport reliability."
+      ]
+    },
+    {
+      "name": "Warehouse cost model",
+      "description": "Internal tool estimating per-query warehouse cost and flagging the most expensive dashboards; reduced monthly compute spend by about 18%.",
+      "startDate": "2024-03",
+      "endDate": "2024-06",
+      "keywords": ["SQL", "Python", "cost optimisation"],
+      "highlights": []
+    }
+  ],
+  "certificates": [
+    {
+      "name": "AWS Certified Solutions Architect - Associate",
+      "issuer": "Amazon Web Services",
+      "date": "2023-11",
+      "url": "https://example.com/verify/placeholder"
+    },
+    {
+      "name": "dbt Analytics Engineering Certification",
+      "issuer": "dbt Labs",
+      "date": "2022-05",
+      "url": ""
+    }
+  ],
+  "publications": [
+    {
+      "name": "A comparison of imputation strategies for sparse sensor networks",
+      "publisher": "Proceedings of the Example Conference on Applied Statistics",
+      "releaseDate": "2020-06",
+      "url": "",
+      "summary": "Co-authored during the research assistant position; evaluates five imputation methods on industrial sensor data."
+    }
+  ],
+  "languages": [
+    { "language": "German", "fluency": "Native speaker" },
+    { "language": "English", "fluency": "Fluent (C1)" },
+    { "language": "Spanish", "fluency": "Basic (A2)" }
+  ],
+  "interests": [
+    { "name": "Open data", "keywords": ["public transport", "civic tech"] },
+    { "name": "Long-distance cycling", "keywords": [] }
+  ],
+  "references": [
+    {
+      "name": "Available on request",
+      "reference": "Former team lead at Helioform Systems; contact details supplied on request."
+    }
+  ]
+}

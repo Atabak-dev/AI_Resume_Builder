@@ -158,15 +158,32 @@ sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b libffi-dev
 
 ## Your data files
 
-The pipeline reads three files from your data directory (`data/` by default). **They are not in
-this repository** — `data/` and `outputs/` are gitignored, because they hold real personal data.
-Create them yourself before the first run:
+The pipeline reads three files from your data directory (`data/` by default). **Your copies are
+not in this repository** — `data/` and `outputs/` are gitignored, because they hold real personal
+data.
 
 ```
 data/
 ├── cv.json              # your full career history (superset — the LLM selects from it)
 ├── personal_info.json   # identity + contact details (never sent to the LLM)
 └── profile.txt          # free-text professional summary, used for the cover letter
+```
+
+Fictional samples of all three live in [`data_example/`](data_example/). Copy them across and
+edit in your own details:
+
+```bash
+mkdir -p data
+cp data_example/cv_sample.json            data/cv.json
+cp data_example/personal_info_sample.json data/personal_info.json
+cp data_example/profile_sample.txt        data/profile.txt
+```
+
+```powershell
+mkdir data
+copy data_example\cv_sample.json            data\cv.json
+copy data_example\personal_info_sample.json data\personal_info.json
+copy data_example\profile_sample.txt        data\profile.txt
 ```
 
 ### `cv.json`
@@ -408,6 +425,7 @@ response, so the result reads less machine-generated. Keep it in the path if you
 ├── USER_CONFIG.json         # language, location source, paths
 ├── requirements.txt
 ├── .env.example             # template -> copy to .env
+├── data_example/            # fictional samples of the three input files
 ├── data/                    # YOUR files, gitignored (see "Your data files")
 ├── outputs/                 # generated applications, gitignored
 ├── logs/                    # rotating application log, gitignored
@@ -460,7 +478,8 @@ The native PDF libraries are not on PATH — see [PDF dependencies](#pdf-depende
 restart the terminal after editing PATH; VS Code needs a full restart, not just a new terminal.
 
 **`FileNotFoundError: data/cv.json`**
-Create your data files, or point `paths.data` in `USER_CONFIG.json` at wherever they live. The
+Copy the samples out of [`data_example/`](data_example/), or point `paths.data` in
+`USER_CONFIG.json` at wherever your files live. The
 pipeline warns and continues with degraded output rather than stopping.
 
 **Wikipedia returns the wrong company**
@@ -494,6 +513,9 @@ Honest list of the sharp edges, all reproducible in the current code:
 
 - Your name, contact details and location are **never** included in any LLM request; they are
   merged into the documents locally after generation.
+- That holds for the scoring round-trip too. `make_cv()` keeps the LLM's own output on
+  `Generator_Handler.cv_markdown_raw` before the contact block is merged in, and `test_cv()` is
+  given that version — so the CV that goes back to the endpoint for grading is anonymous.
 - The job advert *is* sent to the LLM, scrubbed of your personal strings first. The exact text
   that was sent is saved to `raw/job_description.txt` so you can verify this.
 - `cv.json` and `profile.txt` **are** sent to the LLM — that is what tailoring requires. Choose an
