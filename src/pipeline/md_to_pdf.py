@@ -38,6 +38,9 @@ def select_file(title: str, filetypes: list[tuple[str, str] | tuple[str, str, st
 
     root.destroy()
     logger.info(f"File selected: {file_path}")
+    return file_path
+
+
 def select_save_location(default_path: str) -> str:
     """Open a file dialog to select a save location.
 
