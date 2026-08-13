@@ -197,6 +197,25 @@ class JobInfo(BaseModel):
         description="Compensation range or salary information",
         examples=["$80,000 - $120,000 per year", "$40 - $60 per hour", "Competitive salary"]
     )
+    company_name: str = Field(
+        default="",
+        description=(
+            "Official legal name of the hiring company exactly as stated in the job "
+            "description, including any legal form suffix. If the hiring company is "
+            "anonymized or the posting is from a recruiting agency, leave this empty."
+        ),
+        examples=["Carl Zeiss AG", "Sopra Steria SE", ""]
+    )
+    company_common_name: str = Field(
+        default="",
+        description=(
+            "The short, commonly known name of the same company as used in everyday "
+            "speech and press - the legal form suffix and any parent-group qualifiers "
+            "removed. If the company is only ever known by its full name, repeat it here. "
+            "Leave empty only if no company is named."
+        ),
+        examples=["Zeiss", "Sopra Steria", ""]
+    )
     company: CompanyInfo = Field(
         default_factory=CompanyInfo,
         description="Company information refer to CompanyInfo"
@@ -243,6 +262,8 @@ class JobInfo(BaseModel):
                 country=data.get('country', ''),
                 type=data.get('type', ''),
                 salary_range=data.get('salary_range', ''),
+                company_name=data.get('company_name', ''),
+                company_common_name=data.get('company_common_name', ''),
                 company=company
             )
         except (json.JSONDecodeError, TypeError) as e:

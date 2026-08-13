@@ -39,7 +39,8 @@ class FileHandler:
         logger.info(f"Creating output folder for company: {company_name}")
         # Get current datetime in yy-mm-dd-HH-MM format
         datetime_str = datetime.now().strftime("%y%m%d-%H%M")
-        folder_name = f"{datetime_str}_{company_name}"
+        safe_company_name = re.sub(r'[\\/:*?"<>|]+', '_', (company_name or "").strip())[:60].strip(" ._")
+        folder_name = f"{datetime_str}_{safe_company_name}" if safe_company_name else datetime_str
         
         # Create the full path
         folder_path = os.path.join(self.output_base_path, folder_name)

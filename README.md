@@ -37,23 +37,25 @@ score and a list of skills the advert asks for that your CV does not cover.
 ## How it works
 
 ```
-paste job advert  ─┐
-                   ├─► scrub personal info ─► LLM: extract JobInfo ──┐
-company name ──────┘                                                 │
-       │                                                             ▼
-       └─► Wikipedia lookup ─► LLM: extract CompanyInfo ─────► LLM: write CV  ─► Markdown ─► HTML ─► PDF
-                                                          │
-                                                          ├──► LLM: score CV ─► missing_skills.txt
-                                                          │
-                                                          └──► LLM: write cover letter ─► Markdown ─► HTML ─► PDF
+paste job advert ─► scrub personal info ─► LLM: extract JobInfo ─────────────────────┐
+                                           (incl. the company name)                  │
+                                                    │                                ▼
+                                                    └─► Wikipedia lookup ─────► LLM: write CV ─► Markdown ─► HTML ─► PDF
+                                                        LLM: extract CompanyInfo  │
+                                                                                  ├──► LLM: score CV ─► missing_skills.txt
+                                                                                  │
+                                                                                  └──► LLM: write cover letter ─► Markdown ─► HTML ─► PDF
 ```
 
-1. **Input** — you paste the job description into stdin (blank line to finish) and type the
-   company name. Nothing is fetched from job boards.
+1. **Input** — you paste the job description into stdin (blank line to finish). Nothing is fetched
+   from job boards, and you are not asked to type anything else unless the hiring company cannot be
+   identified.
 2. **Scrub** — `_remove_personal_info()` removes every leaf string of `personal_info.json` from
    the advert text, case-insensitively, including `word_with_underscores` variants.
 3. **Extract** — a JSON-schema-constrained call fills the Pydantic models `JobInfo` and
-   `CompanyInfo` (company data comes from the Wikipedia article you name).
+   `CompanyInfo`. `JobInfo` carries both the company's formal name (`company_name`, e.g.
+   `Carl Zeiss AG`) and its common short name (`company_common_name`, e.g. `Zeiss`); the short name
+   is what drives the Wikipedia lookup, the output folder, and the generated documents.
 4. **Generate** — the LLM writes the CV and the cover letter as Markdown in a fixed dialect;
    a hand-written parser converts that to HTML, and WeasyPrint renders A4 PDFs.
 5. **Score** — the generated CV is graded against the advert (0–100) and the gaps are written to
@@ -346,11 +348,20 @@ Enter your choice (e,d, Enter Last used:en):          <- e / d / Enter
 Please paste the job description text (press Enter twice to finish):
 ...paste...                                            <- blank line ends input
 
-Enter company name to search on Wikipedia: SAP SE      <- Enter to skip
+Extracting work position ...
+Work position extraction successful
+Detected company: SAP                                  <- read from the advert
+Loading Wikipedia page ...
 ```
 
 From there it runs unattended (~1–2 minutes, depending on the endpoint), printing each stage.
-It will only stop to ask again if `location` is `"job"` and the advert had no usable location.
+It stops to ask again only if the advert names no company (anonymised posting, recruiting agency),
+or if `location` is `"job"` and the advert had no usable location. The company fallback looks like
+this, and pressing Enter skips the Wikipedia lookup entirely:
+
+```
+Company name could not be detected. Enter it manually (or press Enter to skip):
+```
 
 Smoke-test connectivity first if you like — this costs ~100 tokens:
 
@@ -483,8 +494,11 @@ Copy the samples out of [`data_example/`](data_example/), or point `paths.data` 
 pipeline warns and continues with degraded output rather than stopping.
 
 **Wikipedia returns the wrong company**
-Type the exact article title (e.g. `SAP SE`, not `SAP`). Press Enter at the prompt to skip the
-lookup entirely and generate without company context.
+The lookup uses the short company name the LLM read out of the advert, which usually matches the
+article title. When it does not, the run still completes — `CompanyInfo` is just filled from the
+wrong (or an empty) article. Fix it by editing the company name in the advert text before pasting
+it, or delete the company from the advert entirely so the manual prompt appears and you can type
+the exact article title (e.g. `SAP SE`).
 
 ---
 

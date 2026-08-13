@@ -363,8 +363,15 @@ def main():
         logger.error(f"Error extracting job information: {e}")
         raise
 
-    # Get company info from Wikipedia 
-    company_name = input("Enter company name to search on Wikipedia: ")
+    # Get company name from the extracted job info, falling back to a manual prompt
+    company_name = (job.company_common_name or job.company_name or "").strip()
+    if company_name:
+        logger.info(f"Company name extracted from job description: {company_name}")
+        print(f"Detected company: {company_name}")
+    else:
+        logger.warning("No company name found in job description; asking user")
+        company_name = input("Company name could not be detected. Enter it manually (or press Enter to skip): ").strip()
+
     if company_name:
         logger.info(f"Searching for company information on Wikipedia: {company_name}")
         # Wikipedia
@@ -401,11 +408,15 @@ def main():
             logger.error(f"Error saving USER_CONFIG: {e}")
             print(f"Error saving USER_CONFIG: {e}")
     
-    logger.info(f"Creating output folder for company: {company_info.name}")
-    fileHandel.make_output_folder(company_info.name)
+    logger.info(f"Creating output folder for company: {company_name}")
+    fileHandel.make_output_folder(company_name)
     logger.info(f"Output folder created: {fileHandel.output_path}")
 
-    # Reuse the already extracted structured company_info instead of duplicating work
+    # Reuse the already extracted structured company_info instead of duplicating work,
+    # but prefer the commonly known name extracted from the job description over the
+    # Wikipedia-derived name (which is often the parent group, not the hiring entity)
+    if company_name:
+        company_info.name = company_name
     job.company = company_info
     logger.info(f"Job company set to: {company_info.name}")
 

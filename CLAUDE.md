@@ -43,8 +43,9 @@ Imports are equally mixed: [main.py:8](src/pipeline/main.py#L8) does a flat
 Single-run interactive CLI. One invocation = one job application. Flow in
 [main.py](src/pipeline/main.py):
 
-1. **Input** — job description pasted into stdin (terminated by a blank line), company name typed
-   for a Wikipedia lookup. Nothing is fetched from job boards.
+1. **Input** — job description pasted into stdin (terminated by a blank line). Nothing is fetched
+   from job boards. The company name is read out of the job description by the job-extraction call
+   (step 3); the user is prompted to type it only when that comes back empty.
 2. **Scrub** — `_remove_personal_info()` strips every leaf string from `personal_info.json` out of
    the job description before it reaches the LLM. This is the privacy contract of the project:
    **the candidate's identity never goes to the LLM.** Name/email/phone/location are re-injected
@@ -87,7 +88,11 @@ generation block**, not just to the `languages` list.
 `http.client.HTTPSConnection` — the `openai` package in requirements.txt is not used. Structured
 output goes through `response_format: json_schema` built from `Model.get_schema()`. Each model
 implements `get_schema()` / `set_from_json()`; `JobInfo.get_schema()` deliberately deletes the
-nested `company` property so company extraction stays a separate LLM call.
+nested `company` property so company extraction stays a separate LLM call. The flat
+`company_name` / `company_common_name` fields on `JobInfo` are exempt from that deletion on
+purpose — they are how the hiring company is identified from the advert without a second call.
+`get_schema()` also pops `$defs`, which only exists because the (still declared) `company` field
+references `CompanyInfo`; don't remove that field without adjusting the pop.
 
 ### Markdown → HTML → PDF
 
@@ -125,6 +130,9 @@ committed, fictional reference: `cv_sample.json` for the `cv.json` shape (`skill
 
 Each run creates `outputs/<yymmdd-HHMM>_<company>/` containing `cv.md`, `coverletter.md`,
 `job.yaml`, `missing_skills.txt`, the two PDFs, and `raw/` (`cv_raw.html`, `job_description.txt`).
+`<company>` is `JobInfo.company_common_name`, which is LLM output derived from an untrusted advert,
+so `make_output_folder()` strips path-illegal characters and caps it at 60 chars; with no company
+the folder is just the timestamp.
 Logs go to `logs/application.log` with 5 MB rotation, plus stdout.
 
 ## Known rough edges
