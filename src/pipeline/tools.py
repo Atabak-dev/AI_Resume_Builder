@@ -7,8 +7,9 @@ LLM-callable tools for automated company research.
 
 - `HostApprovalGate`: the user approves each new host once per run before any
   page on it is fetched (Wikipedia and the search endpoint itself are
-  auto-allowed). Every fetch is still traced to the console, even on an
-  already-approved host, so nothing happens invisibly.
+  auto-allowed, plus anything listed in the repo-root `allowed_domains.txt`
+  via `HostApprovalGate.load_domains_file()`). Every fetch is still traced to
+  the console, even on an already-approved host, so nothing happens invisibly.
 - the privacy contract (`src.utils.privacy.PersonalInfoScrubber`): outbound
   queries/URLs containing the candidate's personal info are hard-blocked;
   inbound page text is scrubbed before it re-enters the LLM.
@@ -72,6 +73,28 @@ class HostApprovalGate:
     @property
     def approved_hosts(self) -> List[str]:
         return sorted(self._approved | self._auto_allow)
+
+    @classmethod
+    def load_domains_file(cls, path: str) -> set:
+        """Read a user-maintained list of pre-approved hosts.
+
+        One host per line (e.g. `example.com`); `#` starts a comment, blank
+        lines are ignored, and a scheme/`www.`/port/path on a line is
+        tolerated and stripped. Missing file just means "no extra hosts".
+        """
+        domains = set()
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.split("#", 1)[0].strip()
+                    if not line:
+                        continue
+                    if "://" not in line:
+                        line = f"https://{line}"
+                    domains.add(_normalize_host(line))
+        except FileNotFoundError:
+            logger.debug(f"No allowed-domains file found at {path}; skipping.")
+        return domains
 
 
 class ResearchToolbox:

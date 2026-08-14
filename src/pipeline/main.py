@@ -238,7 +238,9 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
         return scrubber.scrub(text, min_length=3), []
 
     scraping_cfg = user_config.get('scraping', {})
-    gate = HostApprovalGate()
+    domains_path = os.path.join(os.path.dirname(__file__), '..', '..', 'allowed_domains.txt')
+    auto_allow = HostApprovalGate.AUTO_ALLOW | HostApprovalGate.load_domains_file(domains_path)
+    gate = HostApprovalGate(auto_allow=auto_allow)
     provider = get_search_provider()
     wiki = WikipediaScraper(language=language)
     site = CompanyWebsiteScraper(

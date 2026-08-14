@@ -81,7 +81,7 @@ Single-run interactive CLI. One invocation = one job application. Flow in
 5. **Score** — `test_cv()` grades the generated CV against the job description and writes
    `missing_skills.txt`.
 
-### The three configuration layers
+### Configuration layers
 
 | File | Owns |
 | --- | --- |
@@ -89,6 +89,7 @@ Single-run interactive CLI. One invocation = one job application. Flow in
 | `llm_config.json` | Per-use-case sampling params. Its `model`/`endpoint`/`host`/`base_path` keys are committed empty — the env vars above override them, so no private endpoint reaches git |
 | `llm_prompts.yaml` | Every system/user prompt, keyed by task and language, including `company_research.system` for the tool-calling loop |
 | `USER_CONFIG.json` | `language` (`en`/`de`), `location` (`job`/`user`), data/output dirs, plus `scraping.*` (timeout/delay/retries) and `research.*` (`enabled`, `max_iterations`, `max_fetches`, `max_page_chars`, `search_results`) |
+| `allowed_domains.txt` | Hosts pre-approved for company-research tool calls, one per line (`#` comments). Merged into `HostApprovalGate.AUTO_ALLOW` at the start of each run via `HostApprovalGate.load_domains_file()`, so listed hosts never trigger the interactive approval prompt |
 
 `llm_config.json` `use_cases` entries (`cv_generation`, `cover_letter_generation`,
 `job_extraction`, `cv_scoring`, …) override `general_settings` per call; `create_completion()`
@@ -185,8 +186,9 @@ Wikipedia-only lookup. Building blocks:
   never a hard failure.
 - [src/pipeline/tools.py](src/pipeline/tools.py) — `ResearchToolbox` implements the three LLM tools
   (`web_search`, `fetch_page`, `wikipedia_page`); `HostApprovalGate` gates `fetch_page`/
-  `wikipedia_page` per-host (Wikipedia and the DDG endpoint are auto-allowed) and prints a trace
-  line for every fetch regardless of whether the host was already approved.
+  `wikipedia_page` per-host (Wikipedia, the DDG endpoint, and anything in the repo-root
+  `allowed_domains.txt` are auto-allowed) and prints a trace line for every fetch regardless of
+  whether the host was already approved.
 - [src/pipeline/llm_client.py](src/pipeline/llm_client.py) — `run_tool_loop()` drives the
   tool-calling conversation (see the LLM client section above for the tools/`response_format`
   separation rule).
