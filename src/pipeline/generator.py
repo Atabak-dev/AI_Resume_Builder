@@ -328,19 +328,38 @@ class Generator_Handler:
         email = personal_info.get("basics", {}).get("email", "")
         phone = personal_info.get("basics", {}).get("phone", "")
         location = personal_info.get("basics", {}).get("location", {})
+        profiles = personal_info.get("basics", {}).get("profiles", [])
+        linkedin_url = next(
+            (
+                p.get("url", "")
+                for p in profiles
+                if p.get("network", "").strip().lower() == "linkedin" and p.get("url")
+            ),
+            "",
+        )
         
         # Determine location based on USER_CONFIG setting
         user_config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'USER_CONFIG.json')
-        
+
         try:
             with open(user_config_path, 'r', encoding='utf-8') as f:
                 user_config = json.load(f)
                 location_source = user_config.get('location', 'user')
+                contact_fields = user_config.get('contact_fields', {})
         except Exception:
             location_source = 'user'
-        
+            contact_fields = {}
+
+        include_location = contact_fields.get('location', True)
+        include_phone = contact_fields.get('phone', True)
+        include_email = contact_fields.get('email', True)
+        include_linkedin = contact_fields.get('linkedin', True)
+
         # Get location from job if configured and available
-        if location_source == "job" and job:
+        if not include_location:
+            city = ""
+            country = ""
+        elif location_source == "job" and job:
             if job.country and job.location:
                 # Both country and location are available
                 country = job.country
@@ -369,13 +388,18 @@ class Generator_Handler:
             city = location.get("city", "") 
             country = location.get("country", "")
 
-        # Build clickable contact links so the CV
-        contact = " | ".join([
-            f"{self.CONTACT_MARKER}",
-            f"{city}, {country}",
-            f"[{phone}](tel:{phone})",
-            f"[{email}](mailto:{email})"
-        ])
+        # Build clickable contact links, honoring USER_CONFIG's contact_fields
+        # toggles and skipping any field that's missing from personal_info.json
+        contact_parts = [f"{self.CONTACT_MARKER}"]
+        if include_location and (city or country):
+            contact_parts.append(f"{city}, {country}")
+        if include_phone and phone:
+            contact_parts.append(f"[{phone}](tel:{phone})")
+        if include_email and email:
+            contact_parts.append(f"[{email}](mailto:{email})")
+        if include_linkedin and linkedin_url:
+            contact_parts.append(f"[LinkedIn]({linkedin_url})")
+        contact = " | ".join(contact_parts)
         
         # Create personal info section
         personal_info_section = f'# {name}\n{contact}'

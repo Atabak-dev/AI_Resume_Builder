@@ -1,6 +1,12 @@
 {
   "language": "en",
   "location": "job", "_comment_location": "job/user",
+  "contact_fields": {
+    "location": true,
+    "phone": true,
+    "email": true,
+    "linkedin": true
+  },
   "paths": {
     "data": "data",
     "outputs": "outputs"
