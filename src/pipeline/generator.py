@@ -21,7 +21,7 @@ class Generator_Handler:
     Handles tailored CV creation and editing using LLM.
     """
     
-    def __init__(self, llm:LLM_Handeler, language, llm_config) -> None:
+    def __init__(self, llm:LLM_Handeler|None, language, llm_config) -> None:
         """Initialize the CVGenerator.
 
         The generator relies on the LLM client which requires an API key.
@@ -193,7 +193,7 @@ class Generator_Handler:
         response = self.llm.create_completion(
             messages=messages,
             use_case="cover_letter_generation"
-        )
+        ) if self.llm is not None else {}
         logger.debug("LLM response received for cover letter generation")
 
         # Extract generated markdown text
@@ -283,7 +283,7 @@ class Generator_Handler:
         response = self.llm.create_completion(
             messages=messages,
             use_case="cv_generation"
-        )
+        ) if self.llm is not None else {}
         logger.debug("LLM response received for CV generation")
 
         # Extract generated markdown text
@@ -780,7 +780,7 @@ class Generator_Handler:
 
         # Call the LLM to get compatibility score and missing skills
         logger.info("Calling LLM to score CV compatibility")
-        response = self.llm.model_parser(content, CVScoreResponse(), "score_cv_missing_skills", 'cv_scoring')
+        response = self.llm.model_parser(content, CVScoreResponse(), "score_cv_missing_skills", 'cv_scoring') if self.llm is not None else CVScoreResponse()
         logger.debug("LLM response received for CV scoring")
 
         return response
