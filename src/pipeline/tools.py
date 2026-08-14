@@ -38,8 +38,7 @@ DEFAULT_DOMAINS_FILE_TEMPLATE = """\
 # "https://www.example.com/about" and "example.com" are equivalent.
 #
 # Example:
-# linkedin.com
-# crunchbase.com
+# wikipedia.org
 """
 
 
