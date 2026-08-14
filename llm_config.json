@@ -30,7 +30,7 @@
             "reasoning_effort": "low"
         },
         "cv_scoring":{
-            "max_tokens" : 1500
+            "max_tokens" : 3000
         },
         "company_research": {
             "temperature": 0.2,
