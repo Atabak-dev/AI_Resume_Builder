@@ -182,24 +182,27 @@ Logs go to `logs/application.log` with 5 MB rotation, plus stdout.
 `main._research_company()` (called from the company block in `main()`) replaces the old
 Wikipedia-only lookup. Building blocks:
 
-- [src/utils/search.py](src/utils/search.py) — `SearchProvider` ABC with keyless
-  `DuckDuckGoProvider` (default, scrapes `html.duckduckgo.com`) and `BingProvider` (fallback,
-  scrapes `www.bing.com/search`, unwraps its `/ck/a?...&u=a1<base64url>` redirect links) plus keyed
-  `BraveProvider`/`TavilyProvider`/`SerperProvider`. Every provider sets `last_status`
-  (`"ok"`/`"empty"`/`"blocked"`/`"error"`) and latches `blocked = True` once it serves a
-  bot-challenge page, so `ChainedProvider` can fall through to the next backend instead of treating
-  a challenge as "no results". `get_search_provider()` resolves `SEARCH_PROVIDER` (or the `name`
-  arg) into an ordered chain — default is any keyed provider whose API key is set, then
-  `duckduckgo`, then `bing`; see `.env.example` for the `only:`/comma-list syntax.
+- [src/utils/search.py](src/utils/search.py) — `SearchProvider` ABC, keyed-only:
+  `BraveProvider`/`TavilyProvider`/`SerperProvider` (each needs `<PROVIDER>_API_KEY` in `.env`).
+  There is no keyless default — see "Known rough edges" for why the DuckDuckGo/Bing scrapers were
+  removed. Every provider sets `last_status` (`"ok"`/`"empty"`/`"blocked"`/`"error"`) and latches
+  `blocked = True` on a 401/403 (bad key) or 429 (quota exhausted) so the rest of the run doesn't
+  keep hitting a dead backend; `ChainedProvider` falls through to the next configured provider on
+  any non-`ok` status. `get_search_provider()` resolves `SEARCH_PROVIDER` (or the `name` arg) into
+  an ordered chain of whichever keyed providers have keys set, and returns `None` — not a provider
+  — when none do; callers must handle that (see `main._research_company()`'s manual-website
+  fallback below). See `.env.example` for the `only:`/comma-list syntax.
 - [src/pipeline/tools.py](src/pipeline/tools.py) — `ResearchToolbox` implements the three LLM tools
   (`web_search`, `fetch_page`, `wikipedia_page`); `HostApprovalGate` gates `fetch_page`/
-  `wikipedia_page` per-host (any `*.wikipedia.org` edition, the DDG/Bing search endpoints, and
-  anything in the repo-root `allowed_domains.txt` are auto-allowed) and prints a trace line for
-  every fetch regardless of whether the host was already approved. `web_search` also has its own
-  budget (`max_searches`, default 6) separate from `fetch_page`'s `max_fetches`, and an empty
-  result carries a `hint` field telling the model whether to reword once or stop searching
-  entirely — this is what stops the tool loop from burning all its iterations rewording a query
-  against a fully blocked search backend.
+  `wikipedia_page` per-host (any `*.wikipedia.org` edition and anything in the repo-root
+  `allowed_domains.txt` are auto-allowed; `HostApprovalGate.approve()` also lets a URL the user
+  typed in by hand skip the prompt) and prints a trace line for every fetch regardless of whether
+  the host was already approved. `web_search` returns `status: "unavailable"` immediately when
+  `self.provider is None` (no key configured) instead of calling anything; otherwise it has its own
+  budget (`max_searches`, default 6) separate from `fetch_page`'s `max_fetches`, and an empty result
+  carries a `hint` field telling the model whether to reword once or stop searching entirely — this
+  is what stops the tool loop from burning all its iterations rewording a query against a blocked
+  search backend.
 - [src/pipeline/llm_client.py](src/pipeline/llm_client.py) — `run_tool_loop()` drives the
   tool-calling conversation (see the LLM client section above for the tools/`response_format`
   separation rule).
@@ -217,12 +220,25 @@ Wikipedia-only lookup. Building blocks:
 New tool code adding a network call must go through
 `src/utils/privacy.py:PersonalInfoScrubber` on both ends — see the privacy-contract note in
 "Architecture" above. `_research_company()` also checks the company name itself before any research
-call is made, since every outbound query (search, Wikipedia, site scraping) is seeded from it.
+call is made, since every outbound query (search, Wikipedia, site scraping) is seeded from it. Its
+first `web_search` query is seeded from the registered legal name and job location too (passed in
+from `JobInfo`), not just the short common name — a bare short name collides with unrelated
+products/projects (`Fuseki` vs. Apache Jena's SPARQL server `Fuseki`).
+
+When `get_search_provider()` returns `None` (no API key configured) or the tool loop finishes with
+`toolbox.sources` still empty, `_research_company()` calls `_prompt_manual_website()` and asks the
+user to paste the company's official website directly; `gate.approve()` whitelists that host before
+`_official_site_scraping()` (the same homepage-then-linked-pages flow used for the
+`ToolsUnsupportedError` fallback) fetches it. Controlled by `research.manual_website_fallback` in
+`USER_CONFIG.json` (default `true`). If research still yields no sources afterwards,
+`_research_company()` returns `("", [])` and prints a warning rather than letting an empty
+`CompanyInfo` get extracted from nothing — `main()` already skips the `company_extraction` call when
+the context string is empty.
 
 Adding a search backend: implement `.search(query, max_results) -> list[SearchResult]`, set
-`last_status`/`blocked` like the existing providers, then register it in `_KEYED_PROVIDERS` (with an
-env var) or `_KEYLESS_PROVIDERS`/`_DEFAULT_KEYLESS_ORDER` in `search.py`, and document the env var
-in `.env.example`.
+`last_status`/`blocked` like the existing providers (all inherit `_throttle()`/`_cached()` from the
+`SearchProvider` ABC), then register it in `_KEYED_PROVIDERS` (name → (class, env var)) in
+`search.py`, and document the env var in `.env.example`.
 
 ## Known rough edges
 
@@ -230,12 +246,17 @@ in `.env.example`.
   selected, so the standalone converter always exits with "No file selected".
 - `_select_language()` writes `USER_CONFIG.json` back out but never updates the in-memory
   `language` key first, so the new preference isn't actually persisted.
-- DuckDuckGo's HTML endpoint currently serves a bot-challenge page (HTTP 202 with an
-  `anomaly-modal` CAPTCHA) to most datacenter/residential IPs rather than search results.
-  `DuckDuckGoProvider.search()` detects this (`_CHALLENGE_MARKERS`), latches `.blocked = True` for
-  the rest of the run, and logs/prints it loudly instead of the misleading old "markup change or
-  rate limiting" message; the chain then falls through to `BingProvider`. Both keyless backends are
-  unauthenticated HTML scraping against their operators' terms and can break again without notice —
-  set `SEARCH_PROVIDER=brave` (or tavily/serper) with an API key for reliable use.
+- **Do not re-add a keyless DuckDuckGo/Bing scraper.** Both were implemented and removed after live
+  testing. DuckDuckGo's HTML endpoint serves a bot-challenge page (HTTP 202, `anomaly-modal` CAPTCHA)
+  to most datacenter/residential IPs instead of results — at least an honest, detectable failure.
+  Bing was worse: probing it directly (`GET https://www.bing.com/search?q=...`) returned HTTP 200,
+  a page title and searchbox correctly echoing the query, and 10 well-formed `li.b_algo` results
+  with real titles/hosts/links — for a *completely unrelated* query. Three consecutive requests for
+  `"fuseki GmbH"` returned Persian third-grade maths homework, then WhatsApp, then YouTube Help,
+  each page footnoted "Some results have been removed". This is structurally indistinguishable from
+  a genuine result page, so no parser or challenge-heuristic can catch it — it silently poisons the
+  LLM's research context with plausible-looking wrong data, which is worse than returning nothing.
+  Real search APIs (Brave/Tavily/Serper) are the only supported path now; without a key,
+  `_research_company()` prompts the user for the company website by hand instead.
 - The README is largely aspirational marketing copy generated alongside the project — trust the
   code over it, except for the MSYS2/WeasyPrint install steps.

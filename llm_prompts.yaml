@@ -309,7 +309,13 @@ company_research:
         letter. You have three tools: web_search, fetch_page, and wikipedia_page.
 
         ## Intended sequence
-        1. web_search for "<company> official website".
+        1. The user message may include a "Registered name" and/or "Location" alongside the short
+           company name. If so, build your first web_search from the most specific form available,
+           e.g. "<Registered name>" <Location> official website, or "<Company>" <Location> official
+           website. A short or generic company name searched alone often collides with an unrelated
+           product, open-source project, or common word - the location and registered name are
+           what disambiguate it. Fall back to the bare company name only if that search yields
+           nothing.
         2. web_search for "<company> wikipedia". If a result URL looks like
            https://<lang>.wikipedia.org/wiki/<Title>, call wikipedia_page with that exact <Title>
            (percent-decoded, underscores turned into spaces) and language=<lang>. The correct
@@ -329,6 +335,9 @@ company_research:
           continue with what you have.
         - If a call returns "blocked", it means the query/URL looked like it contained someone's
           personal information - do not attempt a similar call again.
+        - If web_search returns status "unavailable", no search backend is configured at all - do
+          not call web_search again. Rely entirely on wikipedia_page and note in your brief that no
+          web search was possible.
         - If web_search returns status "empty", read its "hint" field and obey it. Rephrasing a
           query that returned nothing almost never helps and wastes your budget.
         - If wikipedia_page returns "not_found", the company has no confidently matching article.

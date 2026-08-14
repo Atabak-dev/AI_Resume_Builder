@@ -1,6 +1,7 @@
 import os
 import sys
 from typing import Optional, Dict
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 import json
 import yaml
@@ -218,14 +219,48 @@ def _official_site_scraping(llm, toolbox: ResearchToolbox, homepage_url: str, pr
     return toolbox.dossier
 
 
-def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, language: str, prompts: dict):
+def _prompt_manual_website(company_name: str, scrubber: PersonalInfoScrubber) -> Optional[str]:
+    """Ask the user for the company's official website.
+
+    Used when no search API key is configured, or when automatic research
+    came back empty. Returns a validated ``https://`` URL, or ``None`` if
+    the user skips it or the input fails validation/privacy checks.
+    """
+    for _ in range(2):
+        raw = input(
+            f'Enter the official website for "{company_name}" (or press Enter to skip research): '
+        ).strip()
+        if not raw:
+            return None
+        url = raw if raw.startswith(("http://", "https://")) else f"https://{raw}"
+        parsed = urlparse(url)
+        if not parsed.netloc or "." not in parsed.netloc:
+            print("  That doesn't look like a valid website - try again (e.g. example.com).")
+            continue
+        hits = scrubber.find_personal_info(url)
+        if hits:
+            logger.critical(f"PRIVACY: manually entered website contains personal information {hits}; skipping.")
+            print(f"  !! That URL contains your personal information ({', '.join(hits)}) and will not be used. !!")
+            return None
+        return url
+    print("  Skipping research.")
+    return None
+
+
+def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, language: str, prompts: dict,
+                       *, legal_name: Optional[str] = None, location: Optional[str] = None,
+                       country: Optional[str] = None):
     """Gather company background via web search + Wikipedia.
 
     Runs the LLM tool-calling loop (web_search / fetch_page / wikipedia_page)
-    when the endpoint supports it; falls back to a Wikipedia lookup plus the
-    website-navigation flow above otherwise. Set `research.enabled: false` in
+    when the endpoint supports it and a search API key is configured (see
+    `.env.example` - BRAVE_API_KEY / TAVILY_API_KEY / SERPER_API_KEY); falls
+    back to asking the user for the company's official website otherwise
+    (`_prompt_manual_website`), also offered as a second chance if automatic
+    research comes back with nothing. Set `research.enabled: false` in
     USER_CONFIG.json to skip straight to a plain Wikipedia lookup (e.g. for
-    offline use).
+    offline use), or `research.manual_website_fallback: false` to disable
+    the interactive prompts for unattended runs.
 
     Returns:
         (context_text, source_urls)
@@ -253,7 +288,7 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
     auto_allow = HostApprovalGate.AUTO_ALLOW | HostApprovalGate.load_domains_file(domains_path)
     gate = HostApprovalGate(auto_allow=auto_allow)
     provider = get_search_provider(language=language)
-    logger.info(f"Search backend: {provider.name}")
+    logger.info(f"Search backend: {provider.name if provider else 'none'}")
     wiki = WikipediaScraper(language=language, provider=provider, scrubber=scrubber)
     site = CompanyWebsiteScraper(
         timeout=scraping_cfg.get('company_website_timeout', 30),
@@ -267,31 +302,64 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
         max_searches=research_cfg.get('max_searches', 6),
         default_search_results=research_cfg.get('search_results', 5),
     )
-
-    system_prompt = prompts.get('company_research', {}).get('system', '')
-    user_prompt = f"Company: {company_name}\nLanguage preference: {language}"
+    manual_fallback_enabled = research_cfg.get('manual_website_fallback', True)
 
     summary = ""
-    try:
-        result = llm.run_tool_loop(
-            [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            toolbox, use_case="company_research",
-            max_iterations=research_cfg.get('max_iterations', 6),
-        )
-        summary = result.get("content", "")
-    except ToolsUnsupportedError:
-        logger.warning("Endpoint does not support tool calling; using the fallback research path.")
-        print("Endpoint has no tool-calling support - falling back to manual website discovery.")
-        toolbox.wikipedia_page(company_name)
-        homepage = site.find_official_website(company_name, provider)
-        if homepage:
-            _official_site_scraping(llm, toolbox, homepage, prompts)
+    if provider is None:
+        logger.info(f"No search backend configured; skipping the automatic research loop for '{company_name}'.")
+        print("No search backend configured - skipping the automatic research loop.")
+        if manual_fallback_enabled:
+            url = _prompt_manual_website(company_name, scrubber)
+            if url:
+                print(f'Reading "{company_name}" from {url} instead.')
+                gate.approve(url)
+                toolbox.wikipedia_page(company_name)
+                _official_site_scraping(llm, toolbox, url, prompts)
+    else:
+        system_prompt = prompts.get('company_research', {}).get('system', '')
+        context_lines = [f"Company: {company_name}"]
+        if legal_name and legal_name.strip() and legal_name.strip() != company_name:
+            context_lines.append(f"Registered name: {legal_name.strip()}")
+        location_bits = ", ".join(p for p in (location, country) if p and p.strip())
+        if location_bits:
+            context_lines.append(f"Location: {location_bits}")
+        context_lines.append(f"Language preference: {language}")
+        user_prompt = "\n".join(context_lines)
+
+        try:
+            result = llm.run_tool_loop(
+                [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                toolbox, use_case="company_research",
+                max_iterations=research_cfg.get('max_iterations', 6),
+            )
+            summary = result.get("content", "")
+        except ToolsUnsupportedError:
+            logger.warning("Endpoint does not support tool calling; using the fallback research path.")
+            print("Endpoint has no tool-calling support - falling back to manual website discovery.")
+            toolbox.wikipedia_page(company_name)
+            homepage = site.find_official_website(company_name, provider)
+            if homepage:
+                _official_site_scraping(llm, toolbox, homepage, prompts)
+
+        if not toolbox.sources and manual_fallback_enabled:
+            print(f"\nAutomatic research for {company_name} found nothing usable.")
+            url = _prompt_manual_website(company_name, scrubber)
+            if url:
+                print(f'Reading "{company_name}" from {url} instead.')
+                gate.approve(url)
+                _official_site_scraping(llm, toolbox, url, prompts)
 
     sources = toolbox.sources
-    if sources:
-        print(f"\nAccessed {len(sources)} page(s) for {company_name}:")
-        for s in sources:
-            print(f"  {s}")
+    if not sources:
+        logger.warning(f"No company research could be gathered for '{company_name}'.")
+        print(f"\n  !! No company research could be gathered for '{company_name}'. The CV and cover "
+              "letter will be based on the job advert alone. Set BRAVE_API_KEY / SERPER_API_KEY / "
+              "TAVILY_API_KEY in .env for automatic research. !!\n")
+        return "", []
+
+    print(f"\nAccessed {len(sources)} page(s) for {company_name}:")
+    for s in sources:
+        print(f"  {s}")
 
     parts = [p for p in (toolbox.dossier, f"=== RESEARCH SUMMARY ===\n{summary}" if summary.strip() else "") if p.strip()]
     return "\n\n".join(parts), sources
@@ -389,7 +457,10 @@ def main():
 
         scrubber = PersonalInfoScrubber(personal_info_data)
         print("Researching company (web search + Wikipedia) ...")
-        combined_context, company_sources = _research_company(llm, company_name, scrubber, language, llm_config)
+        combined_context, company_sources = _research_company(
+            llm, company_name, scrubber, language, llm_config,
+            legal_name=job.company_name, location=job.location, country=job.country,
+        )
 
         if combined_context.strip():
             print("Extracting company data from research ...")
@@ -554,6 +625,7 @@ if __name__ == "__main__":
     try:
         main()
         logger.info("=== Application completed successfully ===")
+        print("\n=== Application completed successfully ===")
         
     except Exception as e:
         logger.error(f"=== Application failed with error: {e} ===", exc_info=True)

@@ -52,7 +52,7 @@ def _normalize_host(url: str) -> str:
 class HostApprovalGate:
     """Per-host (not per-URL) user approval, cached for the run."""
 
-    AUTO_ALLOW = {"wikipedia.org", "html.duckduckgo.com", "duckduckgo.com", "www.bing.com", "bing.com"}
+    AUTO_ALLOW = {"wikipedia.org"}
 
     def __init__(self, auto_allow: Optional[set] = None, interactive: bool = True):
         self._auto_allow = auto_allow if auto_allow is not None else set(self.AUTO_ALLOW)
@@ -91,6 +91,15 @@ class HostApprovalGate:
             return True
         self._denied.add(host)
         return False
+
+    def approve(self, url: str) -> None:
+        """Mark *url*'s host approved without prompting.
+
+        For a URL the user typed in themselves (the manual-website
+        fallback) - supplying it *is* the approval, so asking again would
+        just be noise.
+        """
+        self._approved.add(_normalize_host(url))
 
     @property
     def approved_hosts(self) -> List[str]:
@@ -170,6 +179,13 @@ class ResearchToolbox:
             return {"status": "blocked",
                     "reason": "The query contained the candidate's personal information and was not "
                               "executed. Search only for the company; never for a person."}
+
+        if self.provider is None:
+            return {"status": "unavailable",
+                    "reason": "no search backend configured",
+                    "hint": "No search API key is set up. Do not retry web_search - call "
+                            "wikipedia_page with the company name, use any pages already "
+                            "fetched, and summarise what you could not verify."}
 
         if self._search_count >= self.max_searches:
             return {"status": "budget_exceeded",

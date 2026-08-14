@@ -357,19 +357,24 @@ not just extending the `languages` list.
 After the job description is extracted, the pipeline researches the hiring company by giving the
 LLM three tools it can call itself: `web_search`, `fetch_page`, and `wikipedia_page`.
 
-**Search backend** — `SEARCH_PROVIDER` in `.env` selects it. Left unset (or `auto`), the pipeline
-chains backends: any keyed provider whose API key is set, then `duckduckgo`, then `bing` — the
-first one that returns results wins, so a DuckDuckGo bot-challenge or a Bing markup change degrades
-research instead of failing it outright. A single name prioritises that provider ahead of the
-defaults; a comma-separated list sets an exact order; an `only:` prefix (e.g. `only:duckduckgo`)
-pins one provider with no fallback.
+**Search backend** — real API providers only; there is no keyless default. `SEARCH_PROVIDER` in
+`.env` selects it. Left unset (or `auto`), the pipeline tries every provider below that has an API
+key set, Brave first. A single name prioritises that provider ahead of the others; a comma-separated
+list sets an exact order; an `only:` prefix (e.g. `only:brave`) pins one provider with no fallback.
 
 | Value | Signup | Notes |
 | --- | --- | --- |
-| `duckduckgo` (default) | none | Scrapes DuckDuckGo's HTML endpoint. Free, but frequently serves a bot-challenge page instead of results; the run falls through to Bing rather than failing. |
-| `bing` | none | Scrapes Bing's HTML search page. Free, used as the DuckDuckGo fallback by default. |
 | `brave` | free tier, 2000 queries/month | Set `BRAVE_API_KEY`. Recommended for regular use. |
 | `tavily` / `serper` | free tier | Set `TAVILY_API_KEY` / `SERPER_API_KEY`. |
+
+**No API key configured?** The pipeline will not silently do nothing — it asks you to paste the
+company's official website directly, then researches from that page and its linked "about" pages
+instead of searching for it. Set `research.manual_website_fallback: false` in `USER_CONFIG.json` to
+disable that prompt for unattended runs. Earlier versions of this tool scraped DuckDuckGo's and
+Bing's HTML search pages as a free, keyless fallback; both were removed after Bing was found to
+serve well-formed, plausible-looking result pages for a completely unrelated query (see
+`CLAUDE.md`'s "Known rough edges" for the investigation) — silently wrong research is worse than
+none, so a real API key or manual entry are the only paths now.
 
 **You stay in control of what gets accessed.** Before the assistant fetches a page on a host it
 hasn't touched yet this run, you are asked once:
@@ -494,7 +499,7 @@ Logs go to `logs/application.log` (5 MB rotation, 5 backups) and to stdout.
 | --- | --- |
 | `src/pipeline/llm_test.py` | Minimal round-trip against your endpoint (~100 tokens). Add `--tools` to check tool-calling support instead. |
 | `src/pipeline/md_to_pdf.py` | Standalone Markdown → PDF conversion via a Tkinter file picker, no LLM involved. See [Known limitations](#known-limitations). |
-| `python -m src.utils.search "<query>"` | Keyless smoke test of the search backend (no LLM, no API key needed for the default chain). Add `--provider <name>` to test one backend specifically. |
+| `python -m src.utils.search "<query>"` | Smoke test of the configured search backend (no LLM). Requires a `BRAVE_API_KEY`/`TAVILY_API_KEY`/`SERPER_API_KEY` in `.env`. Add `--provider <name>` to test one backend specifically. |
 | `python -m src.utils.scraper --wiki "<company>"` | Resolves a company name to a Wikipedia article via opensearch only (no guessing — prints `None` if nothing confidently matches) and fetches it. |
 | `python -m src.utils.scraper --wiki-search "<company>"` | Same, but resolves via the search backend first — this is the path that finds the right article/edition when opensearch alone can't. |
 | `python -m src.utils.scraper --match "<company>" "<title>"` | Prints whether a Wikipedia article title is confidently the same company. |
@@ -550,7 +555,7 @@ response, so the result reads less machine-generated. Keep it in the path if you
     ├── utils/
     │   ├── file_handler.py  # output folders, saving, file naming
     │   ├── privacy.py       # PersonalInfoScrubber - the privacy contract, in one place
-    │   ├── search.py        # SearchProvider backends (DuckDuckGo/Bing/Brave/Tavily/Serper) + ChainedProvider
+    │   ├── search.py        # SearchProvider backends (Brave/Tavily/Serper, keyed only) + ChainedProvider
     │   └── scraper.py       # Wikipedia lookup + company-site scraping
     ├── styles/              # cv.css, coverletter.css
     └── fonts/               # EB Garamond
@@ -609,12 +614,14 @@ invocation starts with a clean approval list by design (see [Web research](#web-
 intentional: persisting approvals across runs was deliberately left out so you keep reviewing what
 gets accessed.
 
-**Research seems to return very little**
-Check `python src/pipeline/llm_test.py --tools` — if the endpoint doesn't support tool calling, the
-fallback path (Wikipedia + one navigation call) gathers less than the full tool loop. Also check
-`logs/application.log` for `DuckDuckGo served its bot-challenge page` — the run falls through to
-Bing automatically, but if both keyless backends are blocked (or you see repeated `status: "empty"`
-tool results), switch `SEARCH_PROVIDER` to `brave`/`tavily`/`serper` with an API key.
+**Research seems to return very little, or I keep getting asked for the website by hand**
+Check whether `BRAVE_API_KEY`/`TAVILY_API_KEY`/`SERPER_API_KEY` is set in `.env` — with none set,
+`get_search_provider()` returns nothing and the pipeline always falls back to the manual-website
+prompt (see [Web research](#web-research)). With a key set, also check
+`python src/pipeline/llm_test.py --tools` — if the endpoint doesn't support tool calling, the
+fallback path (Wikipedia + one navigation call) gathers less than the full tool loop. Repeated
+`status: "empty"` tool results in `logs/application.log` usually mean the free-tier quota was hit
+(look for a `blocked` status and an HTTP 429 warning).
 
 ---
 
@@ -629,12 +636,11 @@ Honest list of the sharp edges, all reproducible in the current code:
 - **HTTPS only.** The client uses `HTTPSConnection` unconditionally, so plain-HTTP local endpoints
   will not work as-is.
 - **`openai` is in `requirements.txt` but unused** — the client is hand-rolled on `http.client`.
-- **Both keyless search backends (DuckDuckGo, Bing) are unauthenticated HTML scraping**, not real
-  APIs — either can rate-limit, serve a bot-challenge page, or change markup without notice.
-  Failures are detected and logged, and the chain falls through to the next backend rather than
-  crashing the run, but if every keyless backend is blocked at once, research degrades to whatever
-  the official website alone provides. Use `SEARCH_PROVIDER=brave` (or tavily/serper) with an API
-  key if you rely on this daily.
+- **There is no keyless search fallback.** Earlier versions scraped DuckDuckGo's and Bing's HTML
+  search pages; both were removed after Bing was found to serve well-formed but completely wrong
+  results for a query with no detectable sign anything was off (see `CLAUDE.md`'s "Known rough
+  edges"). Without `BRAVE_API_KEY`/`TAVILY_API_KEY`/`SERPER_API_KEY` set, the pipeline asks you to
+  paste the company's website by hand instead of guessing.
 - **Host approvals reset every run.** There is no persisted allowlist across invocations, on purpose
   — see the Troubleshooting entry above.
 
