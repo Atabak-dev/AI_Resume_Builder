@@ -1,0 +1,47 @@
+ (f/m/d)
+Google
+Location: Munich, 
+Employment type: Full-time
+
+About the role:
+We are looking for a  to join the data platform team supporting
+one of our internal analytics products. You will own the ingestion and
+transformation layer that feeds reporting used across several product teams, and
+help the team scale that platform as usage grows.
+
+Responsibilities:
+- Design, build, and operate batch and streaming pipelines that bring product and
+  usage data into our warehouse.
+- Own orchestration for the ingestion layer, including scheduling, retries, and
+  alerting on failures.
+- Partner with analytics engineers on the transformation layer that powers
+  dashboards used by product and business teams.
+- Introduce data quality checks and contract tests between pipeline stages to
+  catch issues before they reach downstream consumers.
+- Review the work of other engineers and mentor newer members of the data team.
+- Take part in an on-call rotation for the data platform.
+
+Requirements:
+- 4+ years of experience as a data engineer or in a comparable backend/data role.
+- Strong Python and SQL skills.
+- Hands-on experience with a workflow orchestrator (Apache Airflow or similar).
+- Experience with a modern transformation tool such as dbt.
+- Practical experience with streaming systems (Kafka or similar).
+- Experience with a cloud platform (AWS or GCP) and infrastructure-as-code
+  (Terraform or similar).
+- Comfortable working with containerized services (Docker).
+- Clear written and spoken English; German is a plus but not required.
+
+Nice to have:
+- Experience with Kubernetes in production.
+- Experience with a cloud data warehouse such as BigQuery or Snowflake.
+- Prior experience mentoring or leading a small team of engineers.
+
+What we offer:
+- Competitive salary and equity.
+- Hybrid work with flexible remote days.
+- A small, senior data team with direct ownership over the platform.
+- Budget for conferences and training.
+
+To apply, send your CV and a short cover letter describing a data pipeline you
+are proud of.

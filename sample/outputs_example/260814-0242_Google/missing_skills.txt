@@ -1,0 +1,24 @@
+=== CV Compatibility Analysis ===
+
+Date: 2026-08-14 02:42
+
+Compatibility Score: 90/100
+
+Strengths:
+  • 4+ years of data engineering experience covering batch and streaming pipelines
+  • Strong Python and SQL expertise
+  • Hands‑on experience with Apache Airflow for orchestration
+  • Proficient with dbt for data transformation
+  • Practical experience using Kafka for streaming data
+  • Extensive work with AWS services (S3, Lambda, ECS) and Terraform for IaC
+  • Comfortable with containerization using Docker
+  • Demonstrated mentorship and code‑review responsibilities
+  • Implemented data quality checks and contract tests
+  • Relevant academic background (M.Sc. Statistics, B.Sc. Applied Mathematics)
+  • Fluent English and native German
+
+Missing Skills:
+  1. Kubernetes experience in production
+  2. Experience with cloud data warehouses such as BigQuery or Snowflake
+  3. Explicit mention of participation in an on-call rotation
+  4. Hands‑on experience with GCP (Google Cloud Platform)

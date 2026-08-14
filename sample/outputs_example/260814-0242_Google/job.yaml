@@ -1,0 +1,110 @@
+company:
+  description: Google is an American multinational technology corporation that builds
+    and operates a wide range of internet‑based products and services, from its flagship
+    search engine to video, cloud, hardware, and advanced AI platforms, serving billions
+    of users worldwide.
+  founded: '1998'
+  future: Google aims to responsibly expand its AI capabilities, advance sustainability,
+    and increase social impact through initiatives like Google.org while continuing
+    to organize the world's information and make it universally accessible and useful.
+  industry: Multinational technology (information technology, online advertising,
+    internet services, cloud computing, artificial intelligence, consumer electronics,
+    quantum computing, e‑commerce)
+  location: Mountain View, California, USA
+  major_product_or_service: Search engine, online advertising, cloud services, and
+    AI platforms
+  name: Google
+  products:
+  - Google Search
+  - YouTube
+  - Android
+  - Google Chrome
+  - Gmail
+  - Google Maps
+  - Google Workspace
+  - Google Cloud
+  - Google Ads
+  - Google Pixel
+  - Google Nest
+  - Google Assistant
+  - Gemini
+  - DeepMind
+  - TensorFlow
+  - TPU
+  size: Hundreds of thousands of employees worldwide
+  sources:
+  - https://en.wikipedia.org/wiki/Google
+  - https://about.google/
+  - https://about.google/company-info/
+  - https://about.google/company-info/our-story/
+  website: https://about.google/
+company_common_name: Google
+company_name: Google
+country: Germany
+description: 'We are looking for a Data Engineer to join the data platform team supporting
+  one of our internal analytics products. You will own the ingestion and transformation
+  layer that feeds reporting used across several product teams, and help the team
+  scale that platform as usage grows.
+
+
+  Responsibilities:
+
+  - Design, build, and operate batch and streaming pipelines that bring product and
+  usage data into our warehouse.
+
+  - Own orchestration for the ingestion layer, including scheduling, retries, and
+  alerting on failures.
+
+  - Partner with analytics engineers on the transformation layer that powers dashboards
+  used by product and business teams.
+
+  - Introduce data quality checks and contract tests between pipeline stages to catch
+  issues before they reach downstream consumers.
+
+  - Review the work of other engineers and mentor newer members of the data team.
+
+  - Take part in an on-call rotation for the data platform.
+
+
+  Requirements:
+
+  - 4+ years of experience as a data engineer or in a comparable backend/data role.
+
+  - Strong Python and SQL skills.
+
+  - Hands-on experience with a workflow orchestrator (Apache Airflow or similar).
+
+  - Experience with a modern transformation tool such as dbt.
+
+  - Practical experience with streaming systems (Kafka or similar).
+
+  - Experience with a cloud platform (AWS or GCP) and infrastructure-as-code (Terraform
+  or similar).
+
+  - Comfortable working with containerized services (Docker).
+
+  - Clear written and spoken English; German is a plus but not required.
+
+
+  Nice to have:
+
+  - Experience with Kubernetes in production.
+
+  - Experience with a cloud data warehouse such as BigQuery or Snowflake.
+
+  - Prior experience mentoring or leading a small team of engineers.
+
+
+  What we offer:
+
+  - Competitive salary and equity.
+
+  - Hybrid work with flexible remote days.
+
+  - A small, senior data team with direct ownership over the platform.
+
+  - Budget for conferences and training.'
+location: Munich
+salary_range: Competitive salary
+title: Data Engineer
+type: Full-time

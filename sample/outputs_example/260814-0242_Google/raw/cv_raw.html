@@ -1,0 +1,314 @@
+<!DOCTYPE html><html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    /* ===== CV Styles ===== */
+
+@page {
+    size: A4;
+    margin: 1.6cm 1.7cm;
+}
+@page :first {
+    margin-top: 0.5cm;
+}
+@font-face {
+    font-family: Garamond;
+    src: url('../fonts/EBGaramond-VariableFont_wght.ttf') format('truetype');
+}
+
+:root {
+    --ink: #16181a;          /* Main text */
+    --text: #2f343c;         /* Secondary body text */
+    --primary: #1f4e79;      /* Professional navy */
+    --primary-soft: #5f7f9f;
+    --muted: #6b7280;
+    --border: #d9dde3;
+    --rule: #c8d0d8;
+    --light: #f7f9fb;
+
+    --font-display: Garamond, sans-serif;
+    --font-body: Garamond, sans-serif;
+}
+
+body {
+    font-family: var(--font-body);
+    font-size: 11pt;
+    line-height: 1.5;
+    color: var(--ink);
+    margin: 0 auto;
+    padding: 0;
+}
+
+/* ===== Header ===== */
+
+.title {
+    font-size: 25pt;
+    font-weight: 700;
+    color: var(--ink);
+    text-align: center;
+    margin-bottom: 6px;
+}
+
+.subtitle {
+    text-align: center;
+    font-size: 12pt;
+    color: var(--primary);
+    font-weight: 600;
+    margin-bottom: 10px;
+}
+
+.sep { 
+    color: var(--muted); 
+    padding: 0 6px; 
+}
+
+.contact-info {
+    text-align: center;
+    font-size: 10pt;
+    color: var(--text);
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
+
+.contact-info a:hover {
+    text-decoration: none;
+}
+
+
+/* ===== Sections ===== */
+
+.section {
+    margin-bottom: 22px;
+    page-break-inside: avoid;
+}
+
+.section-heading {
+    font-size: 11pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--primary);
+    border-bottom: 1.5px solid var(--primary-soft);
+    padding-bottom: 4px;
+    text-align: center;
+    margin: 18px 0 12px;
+}
+
+/* ===== Text ===== */
+
+.normal {
+    margin: 0 0 8px 0;
+}
+
+.bold {
+    font-weight: 700;
+    color: var(--ink);
+}
+
+.italic {
+    font-style: italic;
+    color: var(--muted);
+}
+
+p {
+    margin: 0 0 8px 0;
+    orphans: 3;
+    widows: 3;
+}
+
+/* ===== Experience / Education ===== */
+
+.cv-entry {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 14px;
+    margin-bottom: 6px;
+}
+
+.cv-entry td {
+    vertical-align: top;
+}
+
+.cv-left {
+    width: 75%;
+}
+
+.cv-right {
+    width: 25%;
+    text-align: right;
+}
+
+.cv-title {
+    font-weight: 700;
+    font-size: 12pt;
+    color: var(--ink);
+}
+
+.cv-company {
+    margin-top: 2px;
+    font-size: 11pt;
+    color: var(--text);
+}
+
+.cv-location {
+    font-size: 10pt;
+}
+
+.cv-date {
+    font-size: 10pt;
+    color: var(--muted);
+}
+
+/* ===== Lists ===== */
+
+ul {
+    margin: 8px 0 12px;
+    padding-left: 18px;
+}
+
+li {
+    margin-bottom: 5px;
+    padding-left: 1.5px;
+}
+
+li::marker {
+    color: var(--primary);
+}
+
+/* ===== Skills ===== */
+
+.skills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.skill-tag {
+    background: var(--light);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 9.5pt;
+}
+
+/* ===== Code / Tech ===== */
+
+code {
+    background: #f3f4f6;
+    color: var(--ink);
+    padding: 2px 5px;
+    border-radius: 3px;
+}
+
+h1, h2, h3 {
+    page-break-after: avoid;
+    margin-top: 0px;
+    padding-top: 0px;
+}
+
+
+</style>
+</head>
+<body>
+<h2 class="subtitle">Data Engineer</h2><h1 class="title">Jane Doe</h1><div class="contact-info">Munich, Germany <span class="sep">|</span> [+49 151 00000000](tel:+49 151 00000000) <span class="sep">|</span> <a href="mailto:jane.doe@example.com">jane.doe@example.com</a></div><h3 class="section-heading">Professional Profile</h3><p class="normal">Senior Data Engineer with over four years of experience designing, building, and operating batch and streaming data pipelines. Proven ability to improve pipeline performance, introduce automated data quality checks, and mentor junior engineers. Strong expertise in Python, SQL, Apache Airflow, dbt, Kafka, and AWS cloud services, complemented by hands-on use of Terraform and Docker.</p><h3 class="section-heading">Core Skills</h3><p class="normal"><span class="bold">Programming Languages:</span> Python, SQL, TypeScript, Bash</p><p class="normal"><span class="bold">Data Engineering:</span> Apache Airflow, dbt, Spark, Kafka, PostgreSQL, Redshift</p><p class="normal"><span class="bold">Cloud & Infrastructure:</span> AWS (S3, Lambda, ECS), Docker, Terraform, GitHub Actions</p><p class="normal"><span class="bold">Machine Learning:</span> scikit-learn, PyTorch, MLflow, feature engineering</p><h3 class="section-heading">Professional Experience</h3>
+                    <table class="cv-entry">
+                        <tr>
+                            <td class="cv-left">
+                                <div class="cv-title">Senior Data Engineer</div>
+                                <div class="cv-company">Nordwind Analytics GmbH</div>
+                            </td>
+
+                            <td class="cv-right">
+                                <div class="cv-location">Berlin, Germany</div>
+                                <div class="cv-date">2023-04 - Present</div>
+                            </td>
+                        </tr>
+                    </table>
+                    <ul><li>Rebuilt the nightly batch pipeline with Airflow and dbt, reducing end-to-end run time from 6 hours to 40 minutes and eliminating silent partial-load failures.</li><li>Introduced contract tests between ingestion and downstream marts, cutting reported data incidents from ~8 per month to under 2.</li><li>Mentored two junior engineers, establishing code-review standards and onboarding them to on-call responsibilities.</li><li>Consolidated 30+ legacy cron jobs into a single orchestrated DAG with alerting and retry semantics.</li></ul>
+                    <table class="cv-entry">
+                        <tr>
+                            <td class="cv-left">
+                                <div class="cv-title">Data Engineer</div>
+                                <div class="cv-company">Helioform Systems</div>
+                            </td>
+
+                            <td class="cv-right">
+                                <div class="cv-location">Munich, Germany</div>
+                                <div class="cv-date">2020-09 - 2023-03</div>
+                            </td>
+                        </tr>
+                    </table>
+                    <ul><li>Designed the warehouse schema (PostgreSQL, later Redshift) that underpins all operational reporting.</li><li>Built a near-real-time Kafka consumer to track shipment events, replacing a spreadsheet-based workflow.</li><li>Automated the monthly regulatory export, saving roughly two working days of manual effort each month.</li></ul>
+                    <table class="cv-entry">
+                        <tr>
+                            <td class="cv-left">
+                                <div class="cv-title">Research Assistant, Institute for Applied Statistics</div>
+                                <div class="cv-company">Universität Beispielstadt</div>
+                            </td>
+
+                            <td class="cv-right">
+                                <div class="cv-location">Beispielstadt, Germany</div>
+                                <div class="cv-date">2019-02 - 2020-08</div>
+                            </td>
+                        </tr>
+                    </table>
+                    <ul><li>Maintained the simulation codebase supporting three concurrent research projects.</li><li>Co-authored a conference paper on missing-data imputation strategies for sparse sensor networks.</li></ul><h3 class="section-heading">Education</h3>
+                    <table class="cv-entry">
+                        <tr>
+                            <td class="cv-left">
+                                <div class="cv-title">M.Sc. Statistics</div>
+                                <div class="cv-company">Universität Beispielstadt</div>
+                            </td>
+
+                            <td class="cv-right">
+                                <div class="cv-location">Beispielstadt, Germany</div>
+                                <div class="cv-date">2018-10 - 2020-09</div>
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <table class="cv-entry">
+                        <tr>
+                            <td class="cv-left">
+                                <div class="cv-title">B.Sc. Applied Mathematics</div>
+                                <div class="cv-company">Fachhochschule Musterstadt</div>
+                            </td>
+
+                            <td class="cv-right">
+                                <div class="cv-location">Musterstadt, Germany</div>
+                                <div class="cv-date">2015-10 - 2018-08</div>
+                            </td>
+                        </tr>
+                    </table>
+                    <h3 class="section-heading">Certifications</h3><ul><li>AWS Certified Solutions Architect - Associate, <span class="italic">2023-11</span></li><li>dbt Analytics Engineering Certification, <span class="italic">2022-05</span></li></ul><h3 class="section-heading">Projects</h3>
+                    <table class="cv-entry">
+                        <tr>
+                            <td class="cv-left">
+                                <div class="cv-title">openbahn-delays</div>
+                                <div class="cv-company">Author & Maintainer</div>
+                            </td>
+
+                            <td class="cv-right">
+                                
+                                <div class="cv-date">2022-01 - Present</div>
+                            </td>
+                        </tr>
+                    </table>
+                    <p class="normal">Open-source dataset and dashboard tracking regional rail punctuality (≈600 GitHub stars). Handles roughly 2 million events per day on a small VM and has been cited in two local newspaper articles.</p>
+                    <table class="cv-entry">
+                        <tr>
+                            <td class="cv-left">
+                                <div class="cv-title">Warehouse cost model</div>
+                                <div class="cv-company">Developer</div>
+                            </td>
+
+                            <td class="cv-right">
+                                
+                                <div class="cv-date">2024-03 - 2024-06</div>
+                            </td>
+                        </tr>
+                    </table>
+                    <p class="normal">Internal tool estimating per-query warehouse cost and flagging expensive dashboards, reducing monthly compute spend by about 18 %.</p><h3 class="section-heading">Languages</h3><ul><li>German - Native speaker</li><li>English - Fluent (C1)</li><li>Spanish - Basic (A2)</li></ul></body>
+</html>
