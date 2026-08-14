@@ -22,6 +22,7 @@ score and a list of skills the advert asks for that your CV does not cover.
 - [Installation](#installation)
 - [Your data files](#your-data-files)
 - [Configuration](#configuration)
+- [Web research](#web-research)
 - [Running the pipeline](#running-the-pipeline)
 - [Output](#output)
 - [Extra scripts](#extra-scripts)
@@ -40,22 +41,29 @@ score and a list of skills the advert asks for that your CV does not cover.
 paste job advert ─► scrub personal info ─► LLM: extract JobInfo ─────────────────────┐
                                            (incl. the company name)                  │
                                                     │                                ▼
-                                                    └─► Wikipedia lookup ─────► LLM: write CV ─► Markdown ─► HTML ─► PDF
-                                                        LLM: extract CompanyInfo  │
-                                                                                  ├──► LLM: score CV ─► missing_skills.txt
-                                                                                  │
-                                                                                  └──► LLM: write cover letter ─► Markdown ─► HTML ─► PDF
+                                                    ▼                        LLM: write CV ─► Markdown ─► HTML ─► PDF
+                                          confirm company name                       │
+                                                    │                                ├──► LLM: score CV ─► missing_skills.txt
+                                                    ▼                                │
+                                    LLM tool loop: web_search / fetch_page /         └──► LLM: write cover letter ─► Markdown ─► HTML ─► PDF
+                                    wikipedia_page (host approval per site)
+                                                    │
+                                                    ▼
+                                          LLM: extract CompanyInfo
 ```
 
 1. **Input** — you paste the job description into stdin (blank line to finish). Nothing is fetched
-   from job boards, and you are not asked to type anything else unless the hiring company cannot be
-   identified.
+   from job boards.
 2. **Scrub** — `_remove_personal_info()` removes every leaf string of `personal_info.json` from
-   the advert text, case-insensitively, including `word_with_underscores` variants.
+   the advert text, case-insensitively, including `word_with_underscores` variants. The same check
+   guards every web-research tool call in step 3.5 (see [Web research](#web-research)).
 3. **Extract** — a JSON-schema-constrained call fills the Pydantic models `JobInfo` and
    `CompanyInfo`. `JobInfo` carries both the company's formal name (`company_name`, e.g.
    `Carl Zeiss AG`) and its common short name (`company_common_name`, e.g. `Zeiss`); the short name
-   is what drives the Wikipedia lookup, the output folder, and the generated documents.
+   is what you confirm before research starts, and what drives the output folder.
+3.5. **Research** — you confirm or correct the detected company name, then the LLM researches it
+   using `web_search`, `fetch_page` and `wikipedia_page` tools, asking your approval before it
+   fetches any new website. See [Web research](#web-research).
 4. **Generate** — the LLM writes the CV and the cover letter as Markdown in a fixed dialect;
    a hand-written parser converts that to HTML, and WeasyPrint renders A4 PDFs.
 5. **Score** — the generated CV is graded against the advert (0–100) and the gaps are written to
@@ -266,6 +274,7 @@ endpoint is never committed:
   "use_cases": {
     "job_extraction":           { "temperature": 0.3, "max_tokens": 3000 },
     "company_extraction":       { "max_tokens": 3000 },
+    "company_research":         { "temperature": 0.2, "max_tokens": 3000 },
     "cv_generation":            { "max_tokens": 2500 },
     "cover_letter_generation":  { "max_tokens": 2000 },
     "cv_scoring":               { "max_tokens": 1500 },
@@ -273,6 +282,10 @@ endpoint is never committed:
   }
 }
 ```
+
+`company_research` is used by the tool-calling loop that gathers company background (see
+[Web research](#web-research)) — a separate, lower-temperature use case from `company_extraction`,
+which only turns the gathered text into the structured `CompanyInfo` fields.
 
 `LLM_HOST` + `LLM_BASE_PATH` are what the client actually dials (it uses
 `http.client.HTTPSConnection` directly); `LLM_ENDPOINT` is informational. The environment
@@ -290,7 +303,15 @@ plain-HTTP local servers (Ollama, LM Studio) need a TLS proxy or a small change 
 {
   "language": "en",
   "location": "job",
-  "paths": { "data": "data", "outputs": "outputs" }
+  "paths": { "data": "data", "outputs": "outputs" },
+  "scraping": { "company_website_timeout": 30, "request_delay": 1.0, "max_retries": 3 },
+  "research": {
+    "enabled": true,
+    "max_iterations": 6,
+    "max_fetches": 8,
+    "max_page_chars": 12000,
+    "search_results": 5
+  }
 }
 ```
 
@@ -299,6 +320,9 @@ plain-HTTP local servers (Ollama, LM Studio) need a TLS proxy or a small change 
   - `"job"` — the job's location (you are prompted if the advert does not state one),
   - `"user"` — your own location from `personal_info.json`.
 - **`paths`** — where input is read from and output is written to.
+- **`scraping`** — timeout/pacing for fetching the company's own website.
+- **`research`** — caps on the company-research tool loop; see [Web research](#web-research).
+  Set `research.enabled` to `false` to skip straight to a plain Wikipedia lookup (e.g. offline).
 
 ### `llm_prompts.yaml`
 
@@ -328,6 +352,64 @@ not just extending the `languages` list.
 
 ---
 
+## Web research
+
+After the job description is extracted, the pipeline researches the hiring company by giving the
+LLM three tools it can call itself: `web_search`, `fetch_page`, and `wikipedia_page`.
+
+**Search backend** — `SEARCH_PROVIDER` in `.env` selects it:
+
+| Value | Signup | Notes |
+| --- | --- | --- |
+| `duckduckgo` (default) | none | Scrapes DuckDuckGo's HTML endpoint. Free, but rate-limits after a burst and can silently return no results — the run continues with thinner research rather than failing. |
+| `brave` | free tier, 2000 queries/month | Set `BRAVE_API_KEY`. Recommended for regular use. |
+| `tavily` / `serper` | free tier | Set `TAVILY_API_KEY` / `SERPER_API_KEY`. |
+
+**You stay in control of what gets accessed.** Before the assistant fetches a page on a host it
+hasn't touched yet this run, you are asked once:
+
+```
+The assistant wants to access a new website:
+  Host  : acme.com
+  URL   : https://acme.com/about
+  Reason: Likely contains mission and values
+Allow all pages on this host for this run? [y/N]:
+```
+
+Approving covers the whole host for the rest of the run — you won't be asked again for
+`acme.com/careers`, but a different host like `careers.acme.com` is a separate approval. Every page
+actually fetched is also printed as it happens, even on an already-approved host, and again in a
+summary before extraction:
+
+```
+  -> fetching https://acme.com/about  (host acme.com already approved)
+     ok, 6120 chars
+
+Accessed 3 page(s) for Acme GmbH:
+  https://en.wikipedia.org/wiki/Acme_GmbH
+  https://acme.com/
+  https://acme.com/about
+```
+
+That URL list is saved to `CompanyInfo.sources` and ends up in `job.yaml`, so every run has a
+permanent record of what was actually read. Research is scoped to the company's own website and
+Wikipedia only — the system prompt instructs the model not to fetch review sites, news, or social
+media, and never to search for a person.
+
+**Privacy** applies to this traffic too: a `web_search`/`fetch_page` call is refused outright if the
+query or URL contains anything from `personal_info.json`, and every fetched page is scrubbed of your
+personal details before it is shown to the LLM (see [Privacy](#privacy)).
+
+**If your endpoint doesn't support tool calling**, the pipeline falls back automatically to a plain
+Wikipedia lookup plus a single-shot "pick likely about/mission pages" call — same host-approval
+prompts, just no back-and-forth tool loop. Check support in advance for ~200 tokens:
+
+```powershell
+python src/pipeline/llm_test.py --tools
+```
+
+---
+
 ## Running the pipeline
 
 > Run from the repository root — `main.py` and `llm_client.py` open `llm_config.json` and
@@ -351,13 +433,16 @@ Please paste the job description text (press Enter twice to finish):
 Extracting work position ...
 Work position extraction successful
 Detected company: SAP                                  <- read from the advert
-Loading Wikipedia page ...
+Press Enter to research 'SAP', or type the correct company name:   <- Enter / type a correction
+Researching company (web search + Wikipedia) ...
 ```
 
-From there it runs unattended (~1–2 minutes, depending on the endpoint), printing each stage.
-It stops to ask again only if the advert names no company (anonymised posting, recruiting agency),
-or if `location` is `"job"` and the advert had no usable location. The company fallback looks like
-this, and pressing Enter skips the Wikipedia lookup entirely:
+From there it mostly runs unattended (~1–3 minutes, depending on the endpoint), printing each
+stage, but it will pause to ask your approval the first time it wants to fetch a page on a new
+website (see [Web research](#web-research)) — that's expected, not a hang. It also stops to ask
+again if the advert names no company (anonymised posting, recruiting agency), or if `location` is
+`"job"` and the advert had no usable location. The company fallback looks like this, and pressing
+Enter there skips research entirely:
 
 ```
 Company name could not be detected. Enter it manually (or press Enter to skip):
@@ -381,7 +466,7 @@ outputs/260716-1430_SAP SE/
 ├── CoverLetter_Jane_Doe_Senior_Data_Scientist.pdf
 ├── cv.md                     # generated CV, Markdown
 ├── coverletter.md            # generated cover letter, Markdown
-├── job.yaml                  # extracted JobInfo + CompanyInfo
+├── job.yaml                  # extracted JobInfo + CompanyInfo (incl. CompanyInfo.sources)
 ├── missing_skills.txt        # compatibility score, strengths, gaps
 └── raw/
     ├── cv_raw.html           # intermediate HTML handed to WeasyPrint
@@ -390,7 +475,8 @@ outputs/260716-1430_SAP SE/
 
 `missing_skills.txt` is worth reading even when you are happy with the CV — it is the fastest
 signal about what to add to `cv.json`, or which requirement to address explicitly in the cover
-letter.
+letter. `job.yaml`'s `company.sources` list is every URL the research step actually fetched for
+that run — a permanent record you can check against what ended up in the cover letter.
 
 Logs go to `logs/application.log` (5 MB rotation, 5 backups) and to stdout.
 
@@ -400,8 +486,12 @@ Logs go to `logs/application.log` (5 MB rotation, 5 backups) and to stdout.
 
 | Script | Purpose |
 | --- | --- |
-| `src/pipeline/llm_test.py` | Minimal round-trip against your endpoint (~100 tokens). |
+| `src/pipeline/llm_test.py` | Minimal round-trip against your endpoint (~100 tokens). Add `--tools` to check tool-calling support instead. |
 | `src/pipeline/md_to_pdf.py` | Standalone Markdown → PDF conversion via a Tkinter file picker, no LLM involved. See [Known limitations](#known-limitations). |
+| `python -m src.utils.search "<query>"` | Keyless smoke test of the search backend (no LLM, no API key needed for the DuckDuckGo default). |
+| `python -m src.utils.scraper --wiki "<company>"` | Resolves a company name to a Wikipedia title and fetches it. |
+| `python -m src.utils.scraper --robots <url>` | Checks whether a URL is allowed by that host's robots.txt. |
+| `python -m src.pipeline.tools "<company>"` | Exercises `web_search` + `wikipedia_page` directly, no LLM involved. |
 
 ---
 
@@ -433,7 +523,7 @@ response, so the result reads less machine-generated. Keep it in the path if you
 .
 ├── llm_config.json          # endpoint, model, sampling parameters
 ├── llm_prompts.yaml         # all prompts, per task and language
-├── USER_CONFIG.json         # language, location source, paths
+├── USER_CONFIG.json         # language, location source, paths, scraping/research limits
 ├── requirements.txt
 ├── .env.example             # template -> copy to .env
 ├── data_example/            # fictional samples of the three input files
@@ -443,14 +533,17 @@ response, so the result reads less machine-generated. Keep it in the path if you
 └── src/
     ├── pipeline/
     │   ├── main.py          # entry point / orchestration
-    │   ├── llm_client.py    # OpenAI-compatible HTTP client + schema-constrained parsing
+    │   ├── llm_client.py    # OpenAI-compatible HTTP client + schema-constrained parsing + tool-calling loop
+    │   ├── tools.py          # ResearchToolbox (web_search/fetch_page/wikipedia_page) + HostApprovalGate
     │   ├── generator.py     # CV & cover-letter generation, Markdown -> HTML -> PDF
     │   ├── models.py        # JobInfo, CompanyInfo, CVScoreResponse (Pydantic)
-    │   ├── llm_test.py      # connectivity smoke test
+    │   ├── llm_test.py      # connectivity smoke test (+ --tools support probe)
     │   └── md_to_pdf.py     # standalone converter
     ├── utils/
     │   ├── file_handler.py  # output folders, saving, file naming
-    │   └── scraper.py       # Wikipedia + (disabled) company-site scraping
+    │   ├── privacy.py       # PersonalInfoScrubber - the privacy contract, in one place
+    │   ├── search.py        # SearchProvider backends (DuckDuckGo/Brave/Tavily/Serper)
+    │   └── scraper.py       # Wikipedia lookup + company-site scraping
     ├── styles/              # cv.css, coverletter.css
     └── fonts/               # EB Garamond
 ```
@@ -494,11 +587,23 @@ Copy the samples out of [`data_example/`](data_example/), or point `paths.data` 
 pipeline warns and continues with degraded output rather than stopping.
 
 **Wikipedia returns the wrong company**
-The lookup uses the short company name the LLM read out of the advert, which usually matches the
-article title. When it does not, the run still completes — `CompanyInfo` is just filled from the
-wrong (or an empty) article. Fix it by editing the company name in the advert text before pasting
-it, or delete the company from the advert entirely so the manual prompt appears and you can type
-the exact article title (e.g. `SAP SE`).
+Research resolves the company name via a Wikipedia search first, so an exact article-title match is
+no longer required — but a very generic or ambiguous name can still resolve to the wrong article.
+The run still completes either way; `CompanyInfo` is just filled from whatever text was gathered.
+Fix it by correcting the name at the confirmation prompt (`Press Enter to research 'X', or type the
+correct company name:`) before research starts.
+
+**The assistant keeps asking to approve the same kind of site**
+Each *host* is approved once per run, not once ever — a fresh `python src/pipeline/main.py`
+invocation starts with a clean approval list by design (see [Web research](#web-research)). This is
+intentional: persisting approvals across runs was deliberately left out so you keep reviewing what
+gets accessed.
+
+**Research seems to return very little**
+Check `python src/pipeline/llm_test.py --tools` — if the endpoint doesn't support tool calling, the
+fallback path (Wikipedia + one navigation call) gathers less than the full tool loop. Also check
+`logs/application.log` for `DuckDuckGo returned no parsable results` (rate-limited or blocked); switch
+`SEARCH_PROVIDER` to `brave`/`tavily`/`serper` if this happens often.
 
 ---
 
@@ -506,20 +611,19 @@ the exact article title (e.g. `SAP SE`).
 
 Honest list of the sharp edges, all reproducible in the current code:
 
-- **Company-website scraping is disabled.** `_official_site_scraping()` and
-  `CompanyWebsiteScraper` are implemented but the call site in `main.py` is commented out; only
-  Wikipedia is used. Re-enabling it currently raises `NameError` because the robots.txt check in
-  `src/utils/scraper.py` references an undefined `ROBOTS_USER_AGENT`.
 - **`md_to_pdf.py` always exits with "No file selected"** — its `select_file()` never returns the
   path it picked.
 - **The language preference is not persisted.** `_select_language()` rewrites `USER_CONFIG.json`
   without first updating the in-memory `language` key, so the file is written back unchanged.
-- **`model_parser()` hardcodes `use_case="data_extraction"`**, a key that does not exist in
-  `llm_config.json`. All schema extraction therefore falls back to `general_settings`, and the
-  `use_case` argument callers pass in is ignored.
 - **HTTPS only.** The client uses `HTTPSConnection` unconditionally, so plain-HTTP local endpoints
   will not work as-is.
 - **`openai` is in `requirements.txt` but unused** — the client is hand-rolled on `http.client`.
+- **DuckDuckGo's HTML endpoint is unauthenticated scraping**, not a real API — it rate-limits after
+  a burst and its markup can change without notice. Failures are logged and return an empty result
+  list rather than crashing the run, but research quality degrades silently. Use `SEARCH_PROVIDER=brave`
+  (or tavily/serper) with an API key if you rely on this daily.
+- **Host approvals reset every run.** There is no persisted allowlist across invocations, on purpose
+  — see the Troubleshooting entry above.
 
 ---
 
@@ -534,6 +638,10 @@ Honest list of the sharp edges, all reproducible in the current code:
   that was sent is saved to `raw/job_description.txt` so you can verify this.
 - `cv.json` and `profile.txt` **are** sent to the LLM — that is what tailoring requires. Choose an
   endpoint you trust accordingly, and consider a self-hosted model if that matters to you.
+- The same scrub applies to company research: any `web_search`/`fetch_page` call is refused if the
+  query or URL contains your personal information, and every page fetched during research is
+  scrubbed of it before the LLM sees the text. You still approve every new website by host before
+  it's touched at all — see [Web research](#web-research).
 - `data/`, `outputs/`, `logs/` and `.env` are gitignored. Check before you push anyway.
 
 ---

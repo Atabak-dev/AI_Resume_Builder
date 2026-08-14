@@ -31,6 +31,10 @@
         },
         "cv_scoring":{
             "max_tokens" : 1500
+        },
+        "company_research": {
+            "temperature": 0.2,
+            "max_tokens": 3000
         }
     }
 }

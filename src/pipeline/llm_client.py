@@ -9,6 +9,10 @@ from typing import Dict, List, Optional, Any
 logger = logging.getLogger(__name__)
 
 
+class ToolsUnsupportedError(RuntimeError):
+    """Raised when the endpoint rejects a request that carried `tools`."""
+
+
 class LLM_Handeler:
     """
     A client for interacting with the LLM API endpoint.
@@ -51,6 +55,10 @@ class LLM_Handeler:
                 logger.error(error_msg)
                 raise ValueError(error_msg)
 
+            # Sticky once flipped false by a ToolsUnsupportedError - avoids
+            # repeatedly paying for a request the endpoint has already rejected.
+            self.supports_tools = True
+
             logger.info(f"LLM client initialized successfully. Model: {self.model}")
         except FileNotFoundError as e:
             error_msg = f"LLM configuration file not found: {e}"
@@ -66,7 +74,9 @@ class LLM_Handeler:
         self,
         messages: List[Dict[str, Any]],
         response_format: Optional[Dict] = None,
-        use_case: Optional[str] = None
+        use_case: Optional[str] = None,
+        tools: Optional[List[Dict]] = None,
+        tool_choice: Optional[Any] = None,
     ) -> Dict[str, Any]:
         """
         Create a completion using the LLM API.
@@ -75,89 +85,167 @@ class LLM_Handeler:
             messages: List of message dictionaries with 'role' and 'content'
             response_format: Optional response format specification
             use_case: Identifier for the specific use case being invoked
+            tools: Optional OpenAI-format `tools` array for function calling
+            tool_choice: Optional `tool_choice` value; defaults to "auto" when tools are given
 
         Returns:
             Dictionary containing the response from the LLM
+
+        Raises:
+            ToolsUnsupportedError: if *tools* was passed and the endpoint rejected it.
         """
         logger.info(f"Creating LLM completion for use case: {use_case}")
-        
+
         if not messages:
             error_msg = "Messages cannot be empty"
             logger.error(error_msg)
             raise ValueError(error_msg)
 
         logger.debug(f"Preparing LLM request with {len(messages)} messages")
-        
-        
+
+
         logger.info(f"Connecting to LLM API at {self.host}")
         conn = http.client.HTTPSConnection(self.host, timeout=60)
 
-        # Prepare payload
-        payload = {
-            "messages": messages,
-            "model": self.model,
-        }
-            
-        # Determine settings based on use_case or provided parameters
-        if use_case and use_case in self.use_cases:
-            use_case_settings = self.use_cases[use_case]
-            temperature = use_case_settings.get("temperature", self.general_settings.get("temperature"))
-            max_completion_tokens = use_case_settings.get("max_tokens", self.general_settings.get("max_tokens"))
-            stream = use_case_settings.get("stream", self.general_settings.get("stream"))
-            reasoning_effort = use_case_settings.get("reasoning_effort", self.general_settings.get("reasoning_effort"))
-        else:
-            temperature = self.general_settings.get("temperature")
-            max_completion_tokens = self.general_settings.get("max_tokens")
-            stream = self.general_settings.get("stream")
-            reasoning_effort = self.general_settings.get("reasoning_effort")
-            
-        # Include response format if supplied (e.g., JSON schema)
-        if response_format is not None:
-            payload["response_format"] = response_format
-
-        if temperature is not None:
-            payload["temperature"] = temperature
-
-        if reasoning_effort is not None:
-            payload["reasoning_effort"] = reasoning_effort
-
-        if stream is not None:
-            payload["stream"] = stream
-
-        if max_completion_tokens is not None:
-            payload["max_completion_tokens"] = max_completion_tokens
-
-        logger.debug("Preparing LLM request headers")
-        headers = {
-            'Content-Type': "application/json",
-            'Authorization': f"Bearer {self.api_key}"
-        }
-        # with open("Output.txt", "w") as text_file:
-        #     text_file.write(json.dumps(payload))
-        logger.info("Sending request to LLM API")
-        conn.request("POST", self.base_path, json.dumps(payload), headers)
-
-        res = conn.getresponse()
-        data = res.read()
-        logger.debug(f"Received response from LLM API with status {res.status}")
-
-        if res.status != 200:
-            error_msg = f"LLM API request failed with status {res.status}: {data.decode('utf-8')}"
-            logger.error(error_msg)
-            raise ConnectionError(error_msg)
-            
         try:
-            response_data = json.loads(data.decode("utf-8"))
-            logger.debug("LLM API response parsed successfully")
-            return response_data
-        except json.JSONDecodeError as e:
-            error_msg = f"Failed to parse LLM API response: {e}"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        except Exception as e:
-            error_msg = f"Error processing LLM API response: {e}"
-            logger.error(error_msg)
-            raise
+            # Prepare payload
+            payload = {
+                "messages": messages,
+                "model": self.model,
+            }
+
+            # Determine settings based on use_case or provided parameters
+            if use_case and use_case in self.use_cases:
+                use_case_settings = self.use_cases[use_case]
+                temperature = use_case_settings.get("temperature", self.general_settings.get("temperature"))
+                max_completion_tokens = use_case_settings.get("max_tokens", self.general_settings.get("max_tokens"))
+                stream = use_case_settings.get("stream", self.general_settings.get("stream"))
+                reasoning_effort = use_case_settings.get("reasoning_effort", self.general_settings.get("reasoning_effort"))
+            else:
+                temperature = self.general_settings.get("temperature")
+                max_completion_tokens = self.general_settings.get("max_tokens")
+                stream = self.general_settings.get("stream")
+                reasoning_effort = self.general_settings.get("reasoning_effort")
+
+            # Include response format if supplied (e.g., JSON schema)
+            if response_format is not None:
+                payload["response_format"] = response_format
+
+            if temperature is not None:
+                payload["temperature"] = temperature
+
+            if reasoning_effort is not None:
+                payload["reasoning_effort"] = reasoning_effort
+
+            if tools:
+                payload["tools"] = tools
+                payload["tool_choice"] = tool_choice or "auto"
+                # No SSE parser exists in this client; never stream a tool-calling request.
+                payload["stream"] = False
+            elif stream is not None:
+                payload["stream"] = stream
+
+            if max_completion_tokens is not None:
+                payload["max_completion_tokens"] = max_completion_tokens
+
+            logger.debug("Preparing LLM request headers")
+            headers = {
+                'Content-Type': "application/json",
+                'Authorization': f"Bearer {self.api_key}"
+            }
+            logger.info("Sending request to LLM API")
+            conn.request("POST", self.base_path, json.dumps(payload), headers)
+
+            res = conn.getresponse()
+            data = res.read()
+            logger.debug(f"Received response from LLM API with status {res.status}")
+
+            if res.status != 200:
+                body = data.decode("utf-8", errors="replace")
+                if tools and res.status in (400, 404, 422) and any(
+                        k in body.lower() for k in ("tool", "function_call", "unsupported", "unrecognized")):
+                    self.supports_tools = False
+                    logger.warning(f"Endpoint rejected tool calling ({res.status}); falling back. Body: {body[:300]}")
+                    raise ToolsUnsupportedError(body[:300])
+                error_msg = f"LLM API request failed with status {res.status}: {body}"
+                logger.error(error_msg)
+                raise ConnectionError(error_msg)
+
+            try:
+                response_data = json.loads(data.decode("utf-8"))
+                logger.debug("LLM API response parsed successfully")
+                return response_data
+            except json.JSONDecodeError as e:
+                error_msg = f"Failed to parse LLM API response: {e}"
+                logger.error(error_msg)
+                raise ValueError(error_msg)
+            except Exception as e:
+                error_msg = f"Error processing LLM API response: {e}"
+                logger.error(error_msg)
+                raise
+        finally:
+            conn.close()
+
+    def run_tool_loop(
+        self,
+        messages: List[Dict[str, Any]],
+        toolbox: Any,
+        use_case: str,
+        max_iterations: int = 6,
+    ) -> Dict[str, Any]:
+        """
+        Multi-turn tool-calling loop: repeatedly calls the LLM with *toolbox*'s
+        schemas, dispatches any `tool_calls` it returns via `toolbox.dispatch()`,
+        and feeds the results back until the model stops calling tools.
+
+        Args:
+            messages: Initial conversation (system + user messages).
+            toolbox: Object exposing `.schemas` (OpenAI `tools` array) and
+                `.dispatch(name, arguments) -> dict`.
+            use_case: llm_config.json use_case for sampling parameters.
+            max_iterations: Hard cap on tool round-trips before forcing a summary.
+
+        Returns:
+            {"content": <final assistant text>, "messages": <full transcript>}
+
+        Raises:
+            ToolsUnsupportedError: if the very first call is rejected for using
+                `tools` - callers should fall back to a non-tool-calling path.
+        """
+        convo = list(messages)
+
+        for iteration in range(max_iterations):
+            response = self.create_completion(convo, use_case=use_case, tools=toolbox.schemas)
+            message = response.get("choices", [{}])[0].get("message", {}) or {}
+            tool_calls = message.get("tool_calls") or []
+
+            if not tool_calls:
+                if iteration == 0:
+                    logger.warning(
+                        "First tool-loop response contained no tool_calls; the endpoint "
+                        "may be silently ignoring `tools`."
+                    )
+                return {"content": message.get("content", "") or "", "messages": convo + [message]}
+
+            convo.append(message)
+            for call in tool_calls:
+                fn = call.get("function", {}) or {}
+                result = toolbox.dispatch(fn.get("name", ""), fn.get("arguments", "{}"))
+                convo.append({
+                    "role": "tool",
+                    "tool_call_id": call.get("id"),
+                    "name": fn.get("name", ""),
+                    "content": json.dumps(result, ensure_ascii=False),
+                })
+
+        logger.warning(f"Tool loop hit max_iterations={max_iterations}; forcing a summary.")
+        convo.append({
+            "role": "user",
+            "content": "Tool budget exhausted. Summarise the company using only what you have gathered so far.",
+        })
+        final = self.create_completion(convo, use_case=use_case)
+        final_message = final.get("choices", [{}])[0].get("message", {}) or {}
+        return {"content": final_message.get("content", "") or "", "messages": convo + [final_message]}
 
     def model_parser(self, context: str, model_instance, prompt: str, use_case:str) -> Any:
         """
@@ -230,7 +318,7 @@ class LLM_Handeler:
         # Create completion using the LLM
         response = self.create_completion(
             messages=messages,
-            use_case="data_extraction",
+            use_case=use_case,
             response_format=response_format
         )
          

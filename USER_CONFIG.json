@@ -6,6 +6,15 @@
     "outputs": "outputs"
   },
   "scraping": {
-    "company_website_timeout": 30
+    "company_website_timeout": 30,
+    "request_delay": 1.0,
+    "max_retries": 3
+  },
+  "research": {
+    "enabled": true,
+    "max_iterations": 6,
+    "max_fetches": 8,
+    "max_page_chars": 12000,
+    "search_results": 5
   }
 }

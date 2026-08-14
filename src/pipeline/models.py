@@ -119,12 +119,16 @@ class CompanyInfo(BaseModel):
         description="Future outlook or predictions about the company",
         examples=["Expanding into AI and cloud computing", "Focusing on artificial intelligence and quantum computing research"]
     )
+    sources: SkipJsonSchema[List[str]] = Field(
+        default_factory=list,
+        description="URLs actually fetched during research. Populated locally, never by the LLM."
+    )
 
     @classmethod
     def get_schema(cls) -> dict:
         """
         Returns a detailed explanation of what each field should contain for LLM guidance.
-        
+
         Returns:
             A formatted string explaining each field's purpose and expected content
         """
@@ -158,6 +162,7 @@ class CompanyInfo(BaseModel):
                 founded=data.get('founded', ''),
                 products=data.get('products', []),
                 future=data.get('future', ''),
+                sources=data.get('sources', []),
             )
         except (json.JSONDecodeError, TypeError) as e:
             raise ValueError(f"Failed to parse JSON: {str(e)}")

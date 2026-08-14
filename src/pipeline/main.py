@@ -4,7 +4,6 @@ from typing import Optional, Dict
 from dotenv import load_dotenv
 import json
 import yaml
-import re
 from llm_client import LLM_Handeler
 import logging
 
@@ -44,10 +43,13 @@ logger.info(f"Logging configured with rotation. Log file: {log_file_path}")
 
 # Import utils after adding src to path
 from src.utils.file_handler import FileHandler
-
+from src.utils.privacy import PersonalInfoScrubber
+from src.utils.search import get_search_provider
 from src.utils.scraper import WikipediaScraper, CompanyWebsiteScraper
 from src.pipeline.generator import Generator_Handler
 from src.pipeline.models import CompanyInfo, JobInfo
+from src.pipeline.llm_client import ToolsUnsupportedError
+from src.pipeline.tools import HostApprovalGate, ResearchToolbox
 
 # Load USER_CONFIG.json for language and paths
 user_config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'USER_CONFIG.json')
@@ -172,122 +174,114 @@ def _CV_loader(data_dir):
 def _remove_personal_info(text: str, personal_info: dict) -> str:
     """Remove any personal information found in *text*.
 
-    The function scans the ``personal_info`` dictionary (which may contain nested
-    structures) for leaf string values. Each value is removed from ``text`` in a
-    case‑insensitive manner. To catch occurrences where the value is embedded in
-    a longer word (e.g. ``"Alpha Beta"`` appearing as ``"text_alpha_beta_text"``),
-    the function also creates a pattern that allows any combination of spaces,
-    underscores or hyphens between the words.
-
-    Args:
-        text: The original text that may contain personal data.
-        personal_info: The dictionary loaded from ``personal_info.json``.
-
-    Returns:
-        The text with all detected personal information stripped out.
+    Thin wrapper around :class:`~src.utils.privacy.PersonalInfoScrubber`, kept
+    for call-site compatibility. See that class for the matching rules.
     """
     logger.debug("Removing personal information from text")
+    return PersonalInfoScrubber(personal_info).scrub(text)
 
-    # Helper to flatten the dict and collect leaf string values
-    def _collect_strings(obj):
-        strings = []
-        if isinstance(obj, dict):
-            for v in obj.values():
-                strings.extend(_collect_strings(v))
-        elif isinstance(obj, list):
-            for item in obj:
-                strings.extend(_collect_strings(item))
-        elif isinstance(obj, (str, int, float)):
-            # Convert non‑string scalars to string for replacement
-            strings.append(str(obj))
-        return strings
-    
-    # Gather all personal data strings
-    personal_strings = set(_collect_strings(personal_info))
-    logger.debug(f"Collected {len(personal_strings)} personal information strings for removal")
+def _official_site_scraping(llm, toolbox: ResearchToolbox, homepage_url: str, prompts: dict) -> str:
+    """Fallback research path used when the endpoint has no tool-calling support.
 
-    cleaned_text = text
-    for value in personal_strings:
-        if not value:
+    Single-shot `website_navigation` prompt picks a handful of candidate links
+    off the homepage, then each is fetched through *toolbox*, which enforces
+    the same host-approval gate, privacy scrub, and URL trace as the
+    tool-calling path.
+    """
+    homepage_result = toolbox.fetch_page(homepage_url, reason="Official company homepage")
+    if homepage_result.get("status") != "ok":
+        return ""
+
+    links_preview = [
+        {"url": l["url"], "anchor": l.get("anchor", "")}
+        for l in homepage_result.get("links", [])[:50]
+    ]
+    nav_system = prompts.get('website_navigation', {}).get('system', '')
+    messages = [
+        {"role": "system", "content": nav_system},
+        {"role": "user", "content": f"HOMEPAGE_SNIPPET:\n{homepage_result['text'][:4000]}\n\nLINKS:\n{links_preview}"},
+    ]
+
+    try:
+        nav_response = llm.create_completion(messages=messages, use_case="company_research")
+        nav_content = nav_response["choices"][0]["message"]["content"]
+        candidates = json.loads(nav_content)
+    except Exception as e:
+        logger.warning(f"Website navigation call failed: {e}")
+        candidates = []
+
+    for item in candidates:
+        url = item.get("url")
+        if not url:
             continue
-        # Escape regex special characters
-        escaped = re.escape(value)
-        # Direct replacement (case‑insensitive)
-        cleaned_text = re.sub(escaped, "", cleaned_text, flags=re.IGNORECASE)
+        toolbox.fetch_page(url, reason=item.get("reason", ""))
 
-        # If the value contains spaces, also replace variants with underscores or hyphens
-        if " " in value:
-            # Build a pattern that matches the words separated by any of [_\s-]
-            parts = [re.escape(part) for part in value.split()]
-            pattern = r"[_\s-]+".join(parts)
-            cleaned_text = re.sub(pattern, "", cleaned_text, flags=re.IGNORECASE)
+    return toolbox.dossier
 
-    return cleaned_text
 
-def _official_site_scraping(llm, company_name):
-    website_timeout = user_config.get('scraping', {}).get('company_website_timeout', 15)
-    website_scraper = CompanyWebsiteScraper(timeout=website_timeout)
-    homepage_url = website_scraper.find_official_website(company_name)
-    website_text = ""
-    if homepage_url:
-        print(f"Discovered possible official website: {homepage_url}")
-        # Fetch homepage and internal links
-        page_data = website_scraper.extract_text_and_links(homepage_url)
-        homepage_text = page_data.get("text", "")
-        links = page_data.get("links", [])
+def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, language: str, prompts: dict):
+    """Gather company background via web search + Wikipedia.
 
-        # Prepare a compact description of links for the LLM
-        import yaml as _yaml
-        with open('llm_prompts.yaml', 'r', encoding='utf-8') as f:
-            prompts = _yaml.safe_load(f)
-        nav_system = prompts.get('website_navigation', {}).get('system', '')
+    Runs the LLM tool-calling loop (web_search / fetch_page / wikipedia_page)
+    when the endpoint supports it; falls back to a Wikipedia lookup plus the
+    website-navigation flow above otherwise. Set `research.enabled: false` in
+    USER_CONFIG.json to skip straight to a plain Wikipedia lookup (e.g. for
+    offline use).
 
-        # Build a simple JSON-like description of links
-        links_preview = [
-            {"url": l["url"], "anchor": l.get("anchor", "")}
-            for l in links[:50]
-        ]
+    Returns:
+        (context_text, source_urls)
+    """
+    research_cfg = user_config.get('research', {})
 
-        messages = [
-            {"role": "system", "content": nav_system},
-            {
-                "role": "user",
-                "content": f"HOMEPAGE_SNIPPET:\n{homepage_text[:4000]}\n\nLINKS:\n{links_preview}",
-            },
-        ]
+    if not research_cfg.get('enabled', True):
+        wiki = WikipediaScraper(language=language)
+        text = wiki.extract_page_text(company_name)
+        return scrubber.scrub(text, min_length=3), []
 
-        nav_response = llm.create_completion(messages=messages, use_case="data_extraction")
-        try:
-            nav_content = nav_response["choices"][0]["message"]["content"]
-            import json as _json
-            candidates = _json.loads(nav_content)
-        except Exception:
-            candidates = []
+    scraping_cfg = user_config.get('scraping', {})
+    gate = HostApprovalGate()
+    provider = get_search_provider()
+    wiki = WikipediaScraper(language=language)
+    site = CompanyWebsiteScraper(
+        timeout=scraping_cfg.get('company_website_timeout', 30),
+        request_delay=scraping_cfg.get('request_delay', 1.0),
+        max_retries=scraping_cfg.get('max_retries', 3),
+    )
+    toolbox = ResearchToolbox(
+        scrubber=scrubber, gate=gate, provider=provider, wiki=wiki, site=site,
+        max_page_chars=research_cfg.get('max_page_chars', 12000),
+        max_fetches=research_cfg.get('max_fetches', 8),
+    )
 
-        # Always include homepage text
-        website_text_parts = [f"=== PAGE: {homepage_url} ===\n{homepage_text}"]
+    system_prompt = prompts.get('company_research', {}).get('system', '')
+    user_prompt = f"Company: {company_name}\nLanguage preference: {language}"
 
-        # For each candidate URL, ask user approval before fetching
-        for item in candidates:
-            url = item.get("url")
-            reason = item.get("reason", "")
-            if not url:
-                continue
-            print("\nProposed page:")
-            print(f"URL   : {url}")
-            print(f"Reason: {reason}")
-            approve = input("Press Enter to fetch this page, or type anything to skip: ")
-            if approve.strip() != "":
-                print("Skipped.")
-                continue
-            page = website_scraper.extract_text_and_links(url)
-            text = page.get("text", "")
-            if not text:
-                continue
-            website_text_parts.append(f"\n\n=== PAGE: {url} ===\n{text}")
+    summary = ""
+    try:
+        result = llm.run_tool_loop(
+            [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+            toolbox, use_case="company_research",
+            max_iterations=research_cfg.get('max_iterations', 6),
+        )
+        summary = result.get("content", "")
+    except ToolsUnsupportedError:
+        logger.warning("Endpoint does not support tool calling; using the fallback research path.")
+        print("Endpoint has no tool-calling support - falling back to manual website discovery.")
+        title = wiki.resolve_title(company_name)
+        if title:
+            toolbox.wikipedia_page(title)
+        homepage = site.find_official_website(company_name, provider)
+        if homepage:
+            _official_site_scraping(llm, toolbox, homepage, prompts)
 
-        website_text = "".join(website_text_parts)
-        return website_text
+    sources = toolbox.sources
+    if sources:
+        print(f"\nAccessed {len(sources)} page(s) for {company_name}:")
+        for s in sources:
+            print(f"  {s}")
+
+    parts = [p for p in (toolbox.dossier, f"=== RESEARCH SUMMARY ===\n{summary}" if summary.strip() else "") if p.strip()]
+    return "\n\n".join(parts), sources
 
 def main():
     """Main function to run the job application pipeline with LLM integration."""
@@ -373,26 +367,28 @@ def main():
         company_name = input("Company name could not be detected. Enter it manually (or press Enter to skip): ").strip()
 
     if company_name:
-        logger.info(f"Searching for company information on Wikipedia: {company_name}")
-        # Wikipedia
-        wiki = WikipediaScraper(language=language)
-        print("Loading Wikipedia page ...")
-        company_info_text = wiki.extract_page_text(company_name)
-        logger.info(f"Wikipedia page loaded successfully for: {company_name}")
-        print("Wikipedia page loaded successfully")
+        confirmed_name = input(
+            f"Press Enter to research '{company_name}', or type the correct company name: "
+        ).strip()
+        if confirmed_name:
+            company_name = confirmed_name
+        logger.info(f"Researching company information for: {company_name}")
 
-        # Official website scraping with user-approved page access
-        website_text = "" #_official_site_scraping(llm, company_name)
+        scrubber = PersonalInfoScrubber(personal_info_data)
+        print("Researching company (web search + Wikipedia) ...")
+        combined_context, company_sources = _research_company(llm, company_name, scrubber, language, llm_config)
 
-        combined_context = company_info_text
-        if website_text:
-            combined_context = f"{company_info_text}\n\n{website_text}"
+        if combined_context.strip():
+            print("Extracting company data from research ...")
+            logger.info("Extracting company data using LLM")
+            company_info = llm.model_parser(combined_context, CompanyInfo(), 'company_info', 'company_extraction')
+            logger.info(f"Company data extraction successful. Company: {company_info.name}")
+            print("Company data extraction successful")
+        else:
+            logger.warning("No research context gathered; using the name only.")
+            company_info = CompanyInfo(name=company_name)
 
-        print("Extracting company data from Wikipedia and website ...")
-        logger.info("Extracting company data using LLM")
-        company_info = llm.model_parser(combined_context, CompanyInfo(),'company_info', 'company_extraction')
-        logger.info(f"Company data extraction successful. Company: {company_info.name}")
-        print("Company data extraction successful")
+        company_info.sources = company_sources
     else:
         logger.warning("No company name provided. Using empty company info")
         company_info = CompanyInfo()

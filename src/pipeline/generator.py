@@ -168,8 +168,9 @@ class Generator_Handler:
         user_content = (
             f"\n<candidate_profile>\n{candidate_profile}\n</candidate_profile>\n\n"
             f"\n<job_description>\n{job_desc}\n</job_description>\n\n"
-            f"\n<company_information>\n{company_info.model_dump()}\n</company_information>\n\n" if company_info else ""
-            f"{user_template}"
+            + (f"\n<company_information>\n{company_info.model_dump(exclude={'sources'})}\n</company_information>\n\n"
+               if company_info else "")
+            + f"{user_template}"
         )
         logger.debug(f"Cover letter generation user content prepared. Language: {self.language}")
 
