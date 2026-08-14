@@ -189,7 +189,22 @@ class FileHandler:
                 # Save compatibility score
                 f.write(f"Compatibility Score: {cv_score_response.compatibility_score}/100\n\n")
                 logger.debug(f"Saved compatibility score: {cv_score_response.compatibility_score}/100")
-                
+
+                # Save keyword match (locally computed; absent on older CVScoreResponse instances)
+                matched_keywords = getattr(cv_score_response, 'matched_keywords', [])
+                missing_keywords = getattr(cv_score_response, 'missing_keywords', [])
+                total_keywords = len(matched_keywords) + len(missing_keywords)
+                if total_keywords:
+                    percentage = getattr(cv_score_response, 'keyword_match_percentage', 0)
+                    f.write(f"Keyword Match: {percentage}% ({len(matched_keywords)} of {total_keywords} job keywords)\n\n")
+                    if matched_keywords:
+                        f.write("Matched Keywords:\n")
+                        f.write(f"  {', '.join(matched_keywords)}\n\n")
+                    if missing_keywords:
+                        f.write("Missing Keywords:\n")
+                        f.write(f"  {', '.join(missing_keywords)}\n\n")
+                    logger.debug(f"Saved keyword match: {percentage}% ({len(matched_keywords)}/{total_keywords})")
+
                 # Save strengths
                 if cv_score_response.strengths:
                     f.write("Strengths:\n")

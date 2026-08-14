@@ -79,7 +79,10 @@ Single-run interactive CLI. One invocation = one job application. Flow in
    `research.enabled: false` in `USER_CONFIG.json` skips straight to the plain Wikipedia lookup.
 4. **Generate** — `Generator_Handler` produces CV and cover-letter Markdown, then HTML, then PDF.
 5. **Score** — `test_cv()` grades the generated CV against the job description and writes
-   `missing_skills.txt`.
+   `missing_skills.txt`. Alongside the LLM's `compatibility_score`, `test_cv()` also runs
+   `src/utils/keywords.py:KeywordMatcher` locally (no LLM call) to compute a deterministic
+   keyword-match percentage plus matched/missing keyword lists, stored on `CVScoreResponse` via
+   `SkipJsonSchema` fields so they never reach the LLM's response schema.
 
 ### Configuration layers
 

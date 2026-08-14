@@ -10,6 +10,7 @@ import json
 # Import JobInfo and CVScoreResponse from the correct module path
 from src.pipeline.models import CVScoreResponse, CompanyInfo, JobInfo
 from src.pipeline.llm_client import LLM_Handeler
+from src.utils.keywords import KeywordMatcher
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -772,7 +773,8 @@ class Generator_Handler:
             show_missing_skills: Whether to identify and save missing skills to a file
 
         Returns:
-            CVScoreResponse object containing compatibility score, missing skills, explanation, and strengths
+            CVScoreResponse object containing compatibility score, missing skills, strengths,
+            and a locally-computed keyword match (percentage plus matched/missing keyword lists)
 
         The response is expected to be JSON format.
         """
@@ -789,6 +791,15 @@ class Generator_Handler:
         logger.info("Calling LLM to score CV compatibility")
         response = self.llm.model_parser(content, CVScoreResponse(), "score_cv_missing_skills", 'cv_scoring')
         logger.debug("LLM response received for CV scoring")
+
+        # Local, deterministic keyword match - never sent to or derived from the LLM.
+        try:
+            match = KeywordMatcher(language=self.language).analyse(job.description, cv)
+            response.keyword_match_percentage = match.percentage
+            response.matched_keywords = match.matched
+            response.missing_keywords = match.missing
+        except Exception as e:
+            logger.warning(f"Keyword matching failed, continuing without it: {e}")
 
         return response
 

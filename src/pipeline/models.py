@@ -27,12 +27,24 @@ class CVScoreResponse(BaseModel):
         default_factory=list,
         description="List of CV strengths that match the job requirements"
     )
+    keyword_match_percentage: SkipJsonSchema[int] = Field(
+        default=0,
+        description="Share of job-description keywords found in the CV. Computed locally, never by the LLM."
+    )
+    matched_keywords: SkipJsonSchema[List[str]] = Field(
+        default_factory=list,
+        description="Job-description keywords found in the CV. Computed locally, never by the LLM."
+    )
+    missing_keywords: SkipJsonSchema[List[str]] = Field(
+        default_factory=list,
+        description="Job-description keywords not found in the CV. Computed locally, never by the LLM."
+    )
 
     @classmethod
     def get_schema(cls) -> dict:
         """
         Returns the JSON schema for this model.
-        
+
         Returns:
             A dictionary containing the JSON schema
         """
