@@ -230,19 +230,31 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
     Returns:
         (context_text, source_urls)
     """
+    name_hits = scrubber.find_personal_info(company_name)
+    if name_hits:
+        logger.critical(f"PRIVACY: company name contains personal information {name_hits}; skipping research.")
+        print(f"\n  !! The company name contains your personal information ({', '.join(name_hits)}). "
+              "Research was skipped so it is never sent to a search engine. !!\n")
+        return "", []
+
     research_cfg = user_config.get('research', {})
 
     if not research_cfg.get('enabled', True):
-        wiki = WikipediaScraper(language=language)
-        text = wiki.extract_page_text(company_name)
-        return scrubber.scrub(text, min_length=3), []
+        wiki = WikipediaScraper(language=language, scrubber=scrubber)
+        article = wiki.resolve_article(company_name)
+        if not article:
+            logger.warning(f"No Wikipedia article confidently matched '{company_name}'.")
+            return "", []
+        text = wiki.fetch_article(article)
+        return scrubber.scrub(text, min_length=3), ([article.url] if text else [])
 
     scraping_cfg = user_config.get('scraping', {})
     domains_path = os.path.join(os.path.dirname(__file__), '..', '..', 'allowed_domains.txt')
     auto_allow = HostApprovalGate.AUTO_ALLOW | HostApprovalGate.load_domains_file(domains_path)
     gate = HostApprovalGate(auto_allow=auto_allow)
-    provider = get_search_provider()
-    wiki = WikipediaScraper(language=language)
+    provider = get_search_provider(language=language)
+    logger.info(f"Search backend: {provider.name}")
+    wiki = WikipediaScraper(language=language, provider=provider, scrubber=scrubber)
     site = CompanyWebsiteScraper(
         timeout=scraping_cfg.get('company_website_timeout', 30),
         request_delay=scraping_cfg.get('request_delay', 1.0),
@@ -252,6 +264,8 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
         scrubber=scrubber, gate=gate, provider=provider, wiki=wiki, site=site,
         max_page_chars=research_cfg.get('max_page_chars', 12000),
         max_fetches=research_cfg.get('max_fetches', 8),
+        max_searches=research_cfg.get('max_searches', 6),
+        default_search_results=research_cfg.get('search_results', 5),
     )
 
     system_prompt = prompts.get('company_research', {}).get('system', '')
@@ -268,9 +282,7 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
     except ToolsUnsupportedError:
         logger.warning("Endpoint does not support tool calling; using the fallback research path.")
         print("Endpoint has no tool-calling support - falling back to manual website discovery.")
-        title = wiki.resolve_title(company_name)
-        if title:
-            toolbox.wikipedia_page(title)
+        toolbox.wikipedia_page(company_name)
         homepage = site.find_official_website(company_name, provider)
         if homepage:
             _official_site_scraping(llm, toolbox, homepage, prompts)

@@ -52,7 +52,7 @@ def _normalize_host(url: str) -> str:
 class HostApprovalGate:
     """Per-host (not per-URL) user approval, cached for the run."""
 
-    AUTO_ALLOW = {"en.wikipedia.org", "de.wikipedia.org", "wikipedia.org", "html.duckduckgo.com"}
+    AUTO_ALLOW = {"wikipedia.org", "html.duckduckgo.com", "duckduckgo.com", "www.bing.com", "bing.com"}
 
     def __init__(self, auto_allow: Optional[set] = None, interactive: bool = True):
         self._auto_allow = auto_allow if auto_allow is not None else set(self.AUTO_ALLOW)
@@ -60,13 +60,17 @@ class HostApprovalGate:
         self._approved: set = set()
         self._denied: set = set()
 
+    @staticmethod
+    def _is_wikipedia(host: str) -> bool:
+        return host == "wikipedia.org" or host.endswith(".wikipedia.org")
+
     def is_allowed(self, url: str) -> bool:
         host = _normalize_host(url)
-        return host in self._auto_allow or host in self._approved
+        return self._is_wikipedia(host) or host in self._auto_allow or host in self._approved
 
     def request(self, url: str, reason: str = "") -> bool:
         host = _normalize_host(url)
-        if host in self._auto_allow or host in self._approved:
+        if self._is_wikipedia(host) or host in self._auto_allow or host in self._approved:
             return True
         if host in self._denied:
             return False
@@ -135,6 +139,8 @@ class ResearchToolbox:
         site: Any,
         max_page_chars: int = 12000,
         max_fetches: int = 8,
+        max_searches: int = 6,
+        default_search_results: int = 5,
     ):
         self.scrubber = scrubber
         self.gate = gate
@@ -143,8 +149,12 @@ class ResearchToolbox:
         self.site = site
         self.max_page_chars = max_page_chars
         self.max_fetches = max_fetches
+        self.max_searches = max_searches
+        self.default_search_results = default_search_results
 
         self._fetch_count = 0
+        self._search_count = 0
+        self._empty_searches = 0
         self._sources: List[str] = []
         self._dossier_parts: List[str] = []
         self._page_cache: Dict[str, Dict[str, Any]] = {}
@@ -153,7 +163,7 @@ class ResearchToolbox:
     # Tools
     # ------------------------------------------------------------------ #
 
-    def web_search(self, query: str, max_results: int = 5) -> dict:
+    def web_search(self, query: str, max_results: Optional[int] = None) -> dict:
         hits = self.scrubber.find_personal_info(query)
         if hits:
             self._block("web_search", query, hits)
@@ -161,11 +171,31 @@ class ResearchToolbox:
                     "reason": "The query contained the candidate's personal information and was not "
                               "executed. Search only for the company; never for a person."}
 
+        if self._search_count >= self.max_searches:
+            return {"status": "budget_exceeded",
+                    "message": f"Search budget of {self.max_searches} queries used up. "
+                              "Use wikipedia_page or summarise what you already have."}
+
+        max_results = max_results or self.default_search_results
+        self._search_count += 1
         results = self.provider.search(query, max_results=max_results)
+        provider_name = getattr(self.provider, "name", "?")
+        print(f"  -> web_search '{query}'  (provider {provider_name}) -> {len(results)} result(s)")
         logger.info(f"web_search '{query}' -> {[r.url for r in results]}")
 
         if not results:
-            return {"status": "empty", "query": query}
+            status = getattr(self.provider, "last_status", "empty")
+            self._empty_searches += 1
+            if status == "blocked" or self._empty_searches >= 2:
+                hint = ("Every configured search back-end is blocked or returning nothing. "
+                        "Rewording the query will NOT help - do not retry web_search. "
+                        "Call wikipedia_page with the company name instead, or summarise "
+                        "what you already have and state what you could not verify.")
+            else:
+                hint = ("No results for this exact query. Try at most one differently-worded "
+                        "query, then move on - do not keep rephrasing.")
+            return {"status": "empty", "query": query, "provider": provider_name, "reason": status,
+                    "hint": hint, "searches_remaining": max(0, self.max_searches - self._search_count)}
         return {"status": "ok", "query": query, "results": [r.to_dict() for r in results]}
 
     def fetch_page(self, url: str, reason: str = "") -> dict:
@@ -223,7 +253,7 @@ class ResearchToolbox:
         self._page_cache[url] = result
         return result
 
-    def wikipedia_page(self, title: str) -> dict:
+    def wikipedia_page(self, title: str, language: Optional[str] = None) -> dict:
         hits = self.scrubber.find_personal_info(title)
         if hits:
             self._block("wikipedia_page", title, hits)
@@ -235,29 +265,42 @@ class ResearchToolbox:
             return {"status": "budget_exceeded",
                     "message": f"Fetch budget of {self.max_fetches} pages used up. Summarise what you have."}
 
-        resolved = self.wiki.resolve_title(title)
-        if not resolved:
+        article = self.wiki.resolve_article(title, provider=self.provider, language=language)
+        if not article:
             suggestions = self.wiki.search_titles(title)
-            return {"status": "not_found", "title": title, "suggestions": suggestions}
+            return {"status": "not_found", "requested_title": title, "suggestions": suggestions,
+                    "message": "No Wikipedia article could be confidently matched to this company. "
+                              "Do NOT accept a similarly-named article - a different company with a "
+                              "similar name is worse than no article. Continue with the official website."}
 
-        url = f"https://{self.wiki.language}.wikipedia.org/wiki/{resolved.replace(' ', '_')}"
-        print(f"  -> fetching {url}  (host {_normalize_host(url)} already approved)")
+        if not self.gate.request(article.url, reason=f"Wikipedia article for {title}"):
+            print(f"  x  denied: {article.url}  (host {_normalize_host(article.url)})")
+            return {"status": "denied", "url": article.url, "host": _normalize_host(article.url),
+                    "message": "The user declined access to this host. Try a different source."}
 
-        text = self.wiki.extract_page_text(resolved, auto_resolve=False)
+        print(f"  -> fetching {article.url}  (host {_normalize_host(article.url)} already approved)")
+
+        text = self.wiki.fetch_article(article)
         if not text:
             print("     error: no content retrieved")
-            return {"status": "not_found", "title": title, "suggestions": []}
+            return {"status": "not_found", "requested_title": title, "suggestions": []}
 
         scrubbed = self.scrubber.scrub(text, min_length=3)
         truncated = len(scrubbed) > self.max_page_chars
         scrubbed = scrubbed[:self.max_page_chars]
 
         self._fetch_count += 1
-        self._sources.append(url)
-        self._dossier_parts.append(f"=== PAGE: {url} ===\n{scrubbed}")
+        self._sources.append(article.url)
+        self._dossier_parts.append(f"=== PAGE: {article.url} ===\n{scrubbed}")
         print(f"     ok, {len(scrubbed)} chars" + (" (truncated)" if truncated else ""))
 
-        return {"status": "ok", "title": resolved, "text": scrubbed, "truncated": truncated}
+        result = {"status": "ok", "requested_title": title, "title": article.title,
+                  "language": article.language, "url": article.url,
+                  "text": scrubbed, "truncated": truncated}
+        if article.title != title or article.language != self.wiki.language:
+            result["note"] = (f"Resolved '{title}' to the {article.language}-edition article "
+                              f"'{article.title}'.")
+        return result
 
     # ------------------------------------------------------------------ #
     # Dispatch / schemas / results
@@ -299,7 +342,9 @@ class ResearchToolbox:
             {"type": "function", "function": {
                 "name": "web_search",
                 "description": ("Search the public web. Use it to find a company's official website or "
-                                "its Wikipedia article. Only search for the company; never for a person."),
+                                "its Wikipedia article. Only search for the company; never for a person. "
+                                "If a result comes back with status 'empty', do not keep rewording the "
+                                "query - read the 'hint' field and follow it."),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -327,10 +372,19 @@ class ResearchToolbox:
             }},
             {"type": "function", "function": {
                 "name": "wikipedia_page",
-                "description": "Fetch the plain text of a Wikipedia article by title. Resolves near-misses via Wikipedia search.",
+                "description": ("Fetch the plain text of a Wikipedia article. Prefer passing the exact "
+                                "title from a https://<lang>.wikipedia.org/wiki/<Title> URL you found "
+                                "with web_search (URL-decode it and turn '_' into spaces), together with "
+                                "its language. A title that does not verifiably name the same company is "
+                                "rejected rather than guessed at - status will be 'not_found'."),
                 "parameters": {
                     "type": "object",
-                    "properties": {"title": {"type": "string"}},
+                    "properties": {
+                        "title": {"type": "string"},
+                        "language": {"type": "string",
+                                    "description": "Wikipedia edition code from the article URL host, "
+                                                    "e.g. 'de' for de.wikipedia.org. Optional."},
+                    },
                     "required": ["title"],
                     "additionalProperties": False,
                 },
@@ -354,11 +408,12 @@ if __name__ == "__main__":
     from src.utils.scraper import WikipediaScraper, CompanyWebsiteScraper
 
     company = " ".join(sys.argv[1:]) or "Siemens AG"
+    provider = get_search_provider()
     toolbox = ResearchToolbox(
         scrubber=PersonalInfoScrubber({}),
         gate=HostApprovalGate(),
-        provider=get_search_provider(),
-        wiki=WikipediaScraper(),
+        provider=provider,
+        wiki=WikipediaScraper(provider=provider),
         site=CompanyWebsiteScraper(),
     )
 

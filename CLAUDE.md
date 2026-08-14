@@ -88,10 +88,10 @@ Single-run interactive CLI. One invocation = one job application. Flow in
 
 | File | Owns |
 | --- | --- |
-| `.env` | `LLM_API_KEY` + connection details `LLM_MODEL`/`LLM_HOST`/`LLM_BASE_PATH`/`LLM_ENDPOINT`, plus `SEARCH_PROVIDER` and the matching `BRAVE_API_KEY`/`TAVILY_API_KEY`/`SERPER_API_KEY` (gitignored) |
+| `.env` | `LLM_API_KEY` + connection details `LLM_MODEL`/`LLM_HOST`/`LLM_BASE_PATH`/`LLM_ENDPOINT`, plus `SEARCH_PROVIDER` (supports a comma-separated order and an `only:` pin — see `.env.example`) and the matching `BRAVE_API_KEY`/`TAVILY_API_KEY`/`SERPER_API_KEY` (gitignored) |
 | `llm_config.json` | Per-use-case sampling params. Its `model`/`endpoint`/`host`/`base_path` keys are committed empty — the env vars above override them, so no private endpoint reaches git |
 | `llm_prompts.yaml` | Every system/user prompt, keyed by task and language, including `company_research.system` for the tool-calling loop |
-| `USER_CONFIG.json` | `language` (`en`/`de`), `location` (`job`/`user`), `contact_fields.*` (booleans: `location`/`phone`/`email`/`linkedin` — which contact-line items to render on the CV), data/output dirs, plus `scraping.*` (timeout/delay/retries) and `research.*` (`enabled`, `max_iterations`, `max_fetches`, `max_page_chars`, `search_results`) |
+| `USER_CONFIG.json` | `language` (`en`/`de`), `location` (`job`/`user`), `contact_fields.*` (booleans: `location`/`phone`/`email`/`linkedin` — which contact-line items to render on the CV), data/output dirs, plus `scraping.*` (timeout/delay/retries) and `research.*` (`enabled`, `max_iterations`, `max_fetches`, `max_searches`, `max_page_chars`, `search_results`) |
 | `allowed_domains.txt` | Hosts pre-approved for company-research tool calls, one per line (`#` comments). Merged into `HostApprovalGate.AUTO_ALLOW` at the start of each run via `HostApprovalGate.load_domains_file()`, so listed hosts never trigger the interactive approval prompt |
 
 `llm_config.json` `use_cases` entries (`cv_generation`, `cover_letter_generation`,
@@ -182,30 +182,47 @@ Logs go to `logs/application.log` with 5 MB rotation, plus stdout.
 `main._research_company()` (called from the company block in `main()`) replaces the old
 Wikipedia-only lookup. Building blocks:
 
-- [src/utils/search.py](src/utils/search.py) — `SearchProvider` ABC with `DuckDuckGoProvider`
-  (default, keyless, scrapes `html.duckduckgo.com`) plus `BraveProvider`/`TavilyProvider`/
-  `SerperProvider`, selected by `get_search_provider()` via `SEARCH_PROVIDER` + the matching
-  `*_API_KEY` env var. A missing key on a keyed provider falls back to DuckDuckGo with a warning,
-  never a hard failure.
+- [src/utils/search.py](src/utils/search.py) — `SearchProvider` ABC with keyless
+  `DuckDuckGoProvider` (default, scrapes `html.duckduckgo.com`) and `BingProvider` (fallback,
+  scrapes `www.bing.com/search`, unwraps its `/ck/a?...&u=a1<base64url>` redirect links) plus keyed
+  `BraveProvider`/`TavilyProvider`/`SerperProvider`. Every provider sets `last_status`
+  (`"ok"`/`"empty"`/`"blocked"`/`"error"`) and latches `blocked = True` once it serves a
+  bot-challenge page, so `ChainedProvider` can fall through to the next backend instead of treating
+  a challenge as "no results". `get_search_provider()` resolves `SEARCH_PROVIDER` (or the `name`
+  arg) into an ordered chain — default is any keyed provider whose API key is set, then
+  `duckduckgo`, then `bing`; see `.env.example` for the `only:`/comma-list syntax.
 - [src/pipeline/tools.py](src/pipeline/tools.py) — `ResearchToolbox` implements the three LLM tools
   (`web_search`, `fetch_page`, `wikipedia_page`); `HostApprovalGate` gates `fetch_page`/
-  `wikipedia_page` per-host (Wikipedia, the DDG endpoint, and anything in the repo-root
-  `allowed_domains.txt` are auto-allowed) and prints a trace line for every fetch regardless of
-  whether the host was already approved.
+  `wikipedia_page` per-host (any `*.wikipedia.org` edition, the DDG/Bing search endpoints, and
+  anything in the repo-root `allowed_domains.txt` are auto-allowed) and prints a trace line for
+  every fetch regardless of whether the host was already approved. `web_search` also has its own
+  budget (`max_searches`, default 6) separate from `fetch_page`'s `max_fetches`, and an empty
+  result carries a `hint` field telling the model whether to reword once or stop searching
+  entirely — this is what stops the tool loop from burning all its iterations rewording a query
+  against a fully blocked search backend.
 - [src/pipeline/llm_client.py](src/pipeline/llm_client.py) — `run_tool_loop()` drives the
   tool-calling conversation (see the LLM client section above for the tools/`response_format`
   separation rule).
 - [src/utils/scraper.py](src/utils/scraper.py) — `CompanyWebsiteScraper.find_official_website()`
-  now ranks real search results (rejecting LinkedIn/Glassdoor/Crunchbase/etc.) instead of only
-  prompting for a URL; `WikipediaScraper.resolve_title()`/`search_titles()` resolve a company name
-  to an article title via the MediaWiki `opensearch` API (`wikipedia-api` itself has no search).
+  ranks real search results (rejecting LinkedIn/Glassdoor/Crunchbase/etc. by exact-or-suffix host
+  match, not substring) using `significant_tokens()` (legal-form/generic-corporate stopwords
+  stripped) matched against `_registrable_label()` (aware of two-part suffixes like `co.uk`).
+  `WikipediaScraper.resolve_article()` returns a `WikiArticle(title, language, url)` or `None` —
+  never a guess: it prefers finding the article's URL via the search provider (so
+  `title_matches_company()`'s anchor-token check can verify it's really the same company before
+  accepting), hops to the configured language edition via `langlinks()` when one exists, and falls
+  back to the MediaWiki `opensearch` API filtered the same way. `wikipedia-api` 0.15.0 does expose
+  `.search()`/`.langlinks()` despite older assumptions to the contrary.
 
 New tool code adding a network call must go through
 `src/utils/privacy.py:PersonalInfoScrubber` on both ends — see the privacy-contract note in
-"Architecture" above.
+"Architecture" above. `_research_company()` also checks the company name itself before any research
+call is made, since every outbound query (search, Wikipedia, site scraping) is seeded from it.
 
-Adding a fourth `SearchProvider`: implement `.search(query, max_results) -> list[SearchResult]`,
-register it in `_KEYED_PROVIDERS` in `search.py`, and document the env var in `.env.example`.
+Adding a search backend: implement `.search(query, max_results) -> list[SearchResult]`, set
+`last_status`/`blocked` like the existing providers, then register it in `_KEYED_PROVIDERS` (with an
+env var) or `_KEYLESS_PROVIDERS`/`_DEFAULT_KEYLESS_ORDER` in `search.py`, and document the env var
+in `.env.example`.
 
 ## Known rough edges
 
@@ -213,9 +230,12 @@ register it in `_KEYED_PROVIDERS` in `search.py`, and document the env var in `.
   selected, so the standalone converter always exits with "No file selected".
 - `_select_language()` writes `USER_CONFIG.json` back out but never updates the in-memory
   `language` key first, so the new preference isn't actually persisted.
-- DuckDuckGo's HTML endpoint (the default search backend) is unauthenticated scraping: it rate-limits
-  after a burst and its markup can change without notice. `DuckDuckGoProvider.search()` never raises
-  on failure — it logs a warning and returns `[]` — but research quality degrades silently. Set
-  `SEARCH_PROVIDER=brave` (or tavily/serper) with an API key for reliable use.
+- DuckDuckGo's HTML endpoint currently serves a bot-challenge page (HTTP 202 with an
+  `anomaly-modal` CAPTCHA) to most datacenter/residential IPs rather than search results.
+  `DuckDuckGoProvider.search()` detects this (`_CHALLENGE_MARKERS`), latches `.blocked = True` for
+  the rest of the run, and logs/prints it loudly instead of the misleading old "markup change or
+  rate limiting" message; the chain then falls through to `BingProvider`. Both keyless backends are
+  unauthenticated HTML scraping against their operators' terms and can break again without notice —
+  set `SEARCH_PROVIDER=brave` (or tavily/serper) with an API key for reliable use.
 - The README is largely aspirational marketing copy generated alongside the project — trust the
   code over it, except for the MSYS2/WeasyPrint install steps.

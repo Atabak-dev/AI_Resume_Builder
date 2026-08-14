@@ -20,6 +20,7 @@
     "enabled": true,
     "max_iterations": 6,
     "max_fetches": 8,
+    "max_searches": 6,
     "max_page_chars": 12000,
     "search_results": 5
   }
