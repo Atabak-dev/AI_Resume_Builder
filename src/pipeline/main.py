@@ -33,8 +33,7 @@ logging.basicConfig(
             maxBytes=5*1024*1024,  # 5MB
             backupCount=5,
             encoding='utf-8'
-        ),
-        logging.StreamHandler()
+        )
     ]
 )
 logger = logging.getLogger(__name__)
