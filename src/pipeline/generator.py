@@ -333,10 +333,17 @@ class Generator_Handler:
             (
                 p.get("url", "")
                 for p in profiles
-                if p.get("network", "").strip().lower() == "linkedin" and p.get("url")
+                if isinstance(p, dict)
+                and p.get("network", "").strip().lower() == "linkedin"
+                and p.get("url")
             ),
             "",
         )
+        if not linkedin_url:
+            linkedin_url = next(
+                (p for p in profiles if isinstance(p, str) and "linkedin.com" in p.lower()),
+                "",
+            )
         
         # Determine location based on USER_CONFIG setting
         user_config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'USER_CONFIG.json')
