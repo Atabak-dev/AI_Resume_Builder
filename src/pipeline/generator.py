@@ -60,7 +60,15 @@ class Generator_Handler:
 
 
         self.CONTACT_MARKER = "<<contact_info>>"
-        
+
+        # Closing valediction appended locally to the cover letter, keyed by language.
+        # The prompts tell the LLM never to emit one, so this is the only place it comes from.
+        # Adding a language means adding a key here as well as the user_<code> prompt keys.
+        self.VALEDICTIONS = {
+            "en": "Best regards,",
+            "de": "Mit freundlichen Grüßen",
+        }
+
         # Load CV CSS from external file
         logger.info("Loading CV CSS styles")
         cv_css_path = os.path.join(os.path.dirname(__file__), '..', 'styles', 'cv.css')
@@ -225,7 +233,12 @@ class Generator_Handler:
         name = personal_info.get("basics", {}).get("name", "")
 
         # Add personal info at the end
-        coverletter_markdown = f"{coverletter_markdown}\n\nBest regards,\n\n{name}"
+        valediction = self.VALEDICTIONS.get(self.language, self.VALEDICTIONS["en"])
+        if self.language not in self.VALEDICTIONS:
+            logger.warning(
+                f"No valediction defined for language '{self.language}', falling back to English"
+            )
+        coverletter_markdown = f"{coverletter_markdown}\n\n{valediction}\n\n{name}"
         return coverletter_markdown
 
     def make_cv(self, personal_info: Dict[str, Any], cv: Dict[str, Any], job: JobInfo) -> str:

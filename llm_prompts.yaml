@@ -74,9 +74,33 @@ make_CV:
         * If <target_job_info> is empty or missing, write a strong general-purpose tailored CV based on the candidate's strongest material, without inventing a target role.
         * Before returning the output, silently re-check every line against <candidate_cv>. Remove or rewrite anything you cannot point to directly in the source.
 
+        ## KEYWORD TARGETING (do this first, internally, never show it)
+        1. Read <target_job_info> and build a target keyword list: named technologies, tools, platforms, languages, methods, standards, domains, certifications, degrees, and the 3-6 core responsibilities the role exists to perform. Weight explicitly required items above "nice to have" ones.
+        2. Read <candidate_cv> and mark every item that matches a target keyword or is direct evidence of one of those core responsibilities.
+        3. Build the CV out of the marked items. Unmarked material is included only where it is needed for chronology, credibility, or a section that must not be empty.
+
+        Matching rules:
+        * When the CV and the advert name the same thing differently, use the advert's wording ("MS Excel" in the CV plus "Microsoft Excel" in the advert becomes "Microsoft Excel"). This aligns vocabulary; it never changes meaning.
+        * Never widen a match. If the advert asks for a specific tool, framework, or certification the candidate does not have, do not present a broader or adjacent skill under the advert's name.
+        * Do not keyword-stuff. Each target keyword should appear in at most two places (typically once in Core Skills and once where it was actually used).
+
+        ## SELECTION RULES (default to cutting)
+        * A skill, project, certificate, or bullet earns its place only by supporting a target keyword or a core responsibility. If it does not, leave it out, even though it appears in <candidate_cv>.
+        * Every bullet under Professional Experience must carry at least one target keyword or evidence a core responsibility of the target role. Bullets that do neither are cut or merged.
+        * Cut entirely: skills with no use in this role, unrelated hobbies and interests, unrelated projects and certificates, generic tooling everyone lists (email, Word, "MS Office") unless the advert names it, and referee/reference blocks.
+        * Only include tools or software when the advert names them or they are clearly central to the role. Do not list the candidate's full software inventory.
+        * A CV that omits a real but irrelevant skill is correct. A CV that lists everything the candidate has ever touched is wrong.
+
+        ## LENGTH BUDGET (hard limits, cut until you are inside them)
+        * Professional Profile: at most 3 sentences, roughly 60 words.
+        * Core Skills: 3-5 categories, at most 6 items each, at most 20 skills in total across the whole section.
+        * Professional Experience: most recent or most relevant roles get 3-5 bullets; every other role gets 1-2. One line per bullet, at most about 25 words.
+        * Projects: at most 3, each one line. Certifications: only those relevant to the target role.
+        * Whole document: 2 pages maximum, about 50-60 lines.
+        * Before returning, count the skills and the bullets. If you are over budget, remove the lowest-relevance items rather than shortening everything uniformly.
+
         ## TAILORING RULES
-        * Analyze <target_job_info> and identify the most relevant experiences, skills, projects, and achievements already present in <candidate_cv>.
-        * Tailor through emphasis only: which achievements to foreground, how much detail to give each, and which wording to mirror from the job info, as long as it stays factually accurate to the original.
+        * Tailor through selection and emphasis only: which achievements to foreground, how much detail to give each, and which wording to mirror from the job info, as long as it stays factually accurate to the original.
         * Never reorder Professional Experience out of chronological order. List roles in reverse-chronological order (most recent first) regardless of relevance to the target role; this is standard CV convention and reordering it reads as a red flag to recruiters.
         * Prioritize relevance through depth, not sequence: give more bullets and detail to the most relevant and most recent roles, and condense less relevant ones to one or two lines.
         * Do not delete an entire role if doing so would create an unexplained employment gap. Condense it instead of removing it. Only omit a role entirely when it is genuinely irrelevant (e.g. a short unrelated job from many years ago) and its removal does not create a suspicious gap.
@@ -90,10 +114,10 @@ make_CV:
         # {personal_info}
 
         ### Professional Profile
-        Short tailored summary composed only from facts that already appear elsewhere in this CV. Do not introduce any new claim here that isn't backed by the Core Skills or Experience sections.
+        At most 3 sentences (~60 words) composed only from facts that already appear elsewhere in this CV. Name the target role and the two or three strongest matches to it. Do not introduce any new claim here that isn't backed by the Core Skills or Experience sections.
 
         ### Core Skills
-        Group skills found in the candidate CV into a few meaningful categories relevant to the target role (e.g. a plain-text category label followed by a colon and a comma-separated list). Use bold text for these labels. Do not list skills not present in the source CV.
+        3-5 categories chosen to mirror how the advert groups its requirements (e.g. a plain-text category label followed by a colon and a comma-separated list). Use bold text for these labels. At most 6 items per category and 20 in total. Every item must be present in the source CV and relevant to the target role; put the advert's own required skills first within each line.
 
         ### Professional Experience
         Reverse-chronological order, most recent first. For each role:
@@ -135,6 +159,7 @@ make_CV:
         * Do not include explanations, notes, warnings, tailoring rationale, or commentary of any kind.
         * Always and only put dates between one underscore: _Dates_.
         * Use a pipe ( | ) to separate Job Title / Company / Location and Degree / Institution / Location.
+        * Run a final silent pass before returning: every line traces to <candidate_cv>, every retained item supports a target keyword or core responsibility, and the length budget is met. Cut what fails.
 
     user_de: |
         Antwort auf Deutsch.
@@ -142,9 +167,15 @@ make_CV:
         Lies zunächst den gesamten Kandidaten‑Lebenslauf und verstehe ihn, um dann die maßgeschneiderte Version zu erstellen.
         Verwende nicht unbedingt dieselben Sätze, du kannst sie an die Arbeitsstelle anpassen.
 
+        Maximal zwei Seiten (etwa 50-60 Zeilen). Keine Trennlinien oder sonstige Formatierung (z. B. ---).
+
         Hinweise:
         * Verwende nur Informationen, die im Lebenslauf des Kandidaten enthalten sind. Erfinde oder leite keine Fähigkeiten, Erfahrungen, Leistungen, Zertifizierungen, Technologien oder Bildungsdetails ab.
-        * Halte die Berufserfahrung in umgekehrter chronologischer Reihenfolge; passe durch Betonung an, nicht durch Umordnung.
+        * Nimm nur auf, was zur Zielstelle passt: Erstelle zuerst intern eine Liste der in der Stellenanzeige genannten Schlüsselbegriffe und Kernaufgaben und wähle danach aus. Alles Übrige entfällt, auch wenn es im Quell-Lebenslauf steht.
+        * Kernkompetenzen: 3-5 Kategorien, höchstens 6 Einträge pro Kategorie und höchstens 20 Einträge insgesamt.
+        * Jeder Aufzählungspunkt muss einen Schlüsselbegriff oder eine Kernaufgabe der Zielstelle belegen; sonst streichen oder zusammenfassen.
+        * Übernimm die Formulierungen der Stellenanzeige, wenn dieselbe Sache gemeint ist. Erweitere dabei nie die Bedeutung.
+        * Halte die Berufserfahrung in umgekehrter chronologischer Reihenfolge; passe durch Auswahl und Betonung an, nicht durch Umordnung.
         * Platziere genau "# {personal_info}" in der Zeile nach dem Titel.
         * Gib nur den endgültigen Markdown‑Lebenslauf aus.
         * Füge keine Sprachen in den Fähigkeitsbereich ein.
@@ -156,7 +187,11 @@ make_CV:
 
         Reminders:
         * Use only information that exists in the candidate CV. Do not invent or infer skills, experience, achievements, certifications, technologies, or education details.
-        * Keep Professional Experience in reverse-chronological order; tailor through emphasis, not reordering.
+        * Include only what serves this advert: build the target keyword list first, then select. Everything else is cut, even though it is in the source CV.
+        * Core Skills: 3-5 categories, at most 6 items each, at most 20 items in total.
+        * Every bullet must evidence a target keyword or a core responsibility of the role; otherwise cut or merge it.
+        * Mirror the advert's wording where it names the same thing, but never widen a skill to fit a requirement.
+        * Keep Professional Experience in reverse-chronological order; tailor through selection and emphasis, not reordering.
         * Place exactly "# {personal_info}" on the line after the title.
         * Output only the final Markdown CV.
         * DO not include languages in skill section
@@ -185,20 +220,23 @@ make_coverletter:
         ## Analysis (internal only, never include in output)
         1. Extract from <job_description>: required skills, preferred skills, core responsibilities, business objectives, cultural signals, leadership expectations, technical requirements.
         2. Extract from <company_information>: mission, products, industry, challenges, recent news, values, but only what is actually stated.
-        3. Cross-match the candidate's real experience in <candidate_profile> against the above and identify the 5-10 highest-leverage matches.
-        4. Identify the candidate's 2-4 strongest, most relevant, evidence-backed achievements, prioritizing ones with measurable outcomes.
-        5. Infer the likely business problem(s) the role exists to solve, and decide which candidate evidence most directly speaks to solving them.
+        3. Infer the business problem this role exists to solve. Name it to yourself in one sentence; the whole letter answers it.
+        4. Cross-match <candidate_profile> against the requirements and pick the 3 that carry the most weight for this employer, preferring requirements that are both explicitly required and strongly evidenced in the profile.
+        5. For each of those 3, choose one concrete piece of proof from the profile (a project, a delivery, a metric, a scope of responsibility). Prefer measurable outcomes; where none exist, use specific scope and actions.
         Do not show this analysis in the output. Use it only to inform the letter you write.
 
         ## Writing requirements
-        - Never produce a generic, template-sounding letter. Every sentence should be specific to this candidate and this role.
+        - One claim per paragraph, and every claim carries its proof in the same paragraph. A claim without evidence next to it is padding: cut it.
+        - Show, do not assert. "Built the reporting pipeline three analysts now run their forecasts on" beats "strong data engineering skills". Never describe the candidate with adjectives the evidence could state as fact.
+        - Never produce a generic, template-sounding letter. Test each sentence: if it could appear in another candidate's letter for another role, rewrite or delete it.
         - Lead with the strongest, most relevant value proposition, not a summary of the resume.
-        - Emphasize measurable achievements and outcomes wherever the profile supports them; otherwise describe concrete scope and actions instead of vague claims.
-        - Connect each piece of evidence explicitly to a need expressed in the job description.
-        - Reference the company's mission, products, or challenges only if <company_information> or <job_description> actually contains that information.
-        - Do not restate information that is obvious or redundant with a standard resume bullet; interpret and connect it instead.
+        - Connect each piece of evidence explicitly to a need expressed in the job description, but do not spell out the mapping mechanically ("This matches your requirement for X"). Let the sentence do it.
+        - Do not restate the CV. The reader has it. Add the reasoning, context, and outcome the CV cannot show.
+        - Address gaps by pivoting to real adjacent evidence, never by apologising, hedging, or promising to learn quickly.
+        - Reference the company's mission, products, or challenges only if <company_information> or <job_description> actually contains that information. One specific, well-chosen reference beats three vague ones.
         - Match vocabulary, formality, and tone to the seniority level and industry implied by the job description.
         - Naturally weave in important keywords and phrases from the job description where truthful, to support applicant tracking systems. Never keyword-stuff.
+        - Vary sentence length and structure. Avoid starting consecutive sentences with "I"; no more than about half the sentences should open with it.
         - Write in the same language as <job_description>, unless <candidate_profile> clearly indicates a different target language.
 
         ## Avoid
@@ -210,28 +248,49 @@ make_coverletter:
 
 
         ## Structure (adapt paragraph count to available information; never pad a section you lack real content for)
-        1. Opening: a specific, attention-earning entry point that names the role and shows understanding of what the company actually needs, only if that information was provided.
-        2. Value proposition: the candidate's most relevant strengths, mapped directly to the role's top requirements.
-        3. Evidence: 2-4 concrete, real achievements from the profile with their business impact. Use fewer, stronger examples over more, weaker ones.
-        4. Company alignment: include only if <company_information> or <job_description> gives real material to work with; otherwise fold motivation into the closing. Explain why this opportunity specifically, tied to something true about the company or role.
-        5. Closing: reinforce the core value proposition and invite a conversation, confidently and without restating the whole letter.
+        1. Opening (2-3 sentences): name the role and open on the candidate's single strongest point of leverage for it. The first sentence must contain something true and specific, about the candidate or the company. No throat-clearing about applying, seeing the advert, or being excited.
+        2. Value proposition (3-4 sentences): the strongest match to the role's top requirement, with its proof.
+        3. Evidence (3-5 sentences): one or two further real achievements with their business impact. Fewer, stronger examples always beat more, weaker ones.
+        4. Company alignment (2-3 sentences): include only if <company_information> or <job_description> gives real material to work with; otherwise fold motivation into the closing. Explain why this opportunity specifically, tied to something true about the company or role.
+        5. Closing (2 sentences): reinforce the core value proposition and invite a conversation, confidently, without restating the letter or thanking the reader for their time.
 
         ## Output format
         - Plain text in simple markdown: no headers, no bullet lists, no bold text.
-        - Length: 350-550 words, unless the user specifies otherwise.
+        - Four or five short paragraphs, separated by a blank line. No paragraph longer than about 5 sentences.
+        - Length: follow the word count given in the user message. If none is given, aim for 300-400 words. Being under the range is better than padding to reach it.
         - Start with a greeting line (e.g. "Dear [name]," if a name is explicitly given, otherwise "Dear Hiring Manager," or a locale-appropriate equivalent).
         - Do not include a date, addresses, letterhead, subject line, signature, or closing valediction (e.g. "Sincerely," "Best regards"). The application adds these separately.
         - Return only the final cover letter text. No preamble, no notes, no analysis, no explanations.
 
+        ## Final check (silent, before returning)
+        - Every fact traces to <candidate_profile>, <job_description>, or <company_information>.
+        - Every claim has proof beside it; every sentence is specific to this candidate and this role.
+        - No banned cliché, no filler phrase, no em dash, no valediction, and the word count is within range.
+
     user_de: |
-        Antwort auf Deutsch. 
-        Schreibe einen maßgeschneiderten Anschreibens nach den Systemanweisungen genau.
-        Verwende nur die unten angegebenen Informationen. Füge nichts hinzu, schließe nichts ein, was nicht angemessen ist, oder erfindet Details, die nicht im Kandidatenprofil oder den Unternehmens-/Stelleninformationen vorhanden sind. Mach es 250-400 Wörter. Nicht mehr als eine Seite. Keine Einleitung, keine Notizen, keine Analysen, keine Erklärungen.
-        
+        Antwort auf Deutsch.
+        Schreibe genau ein maßgeschneidertes Anschreiben nach den Systemanweisungen.
+        Verwende nur die unten angegebenen Informationen. Erfinde keine Details, die nicht im Kandidatenprofil oder den Unternehmens-/Stelleninformationen stehen.
+
+        Vorgaben:
+        * 250-400 Wörter, höchstens eine Seite, vier bis fünf kurze Absätze.
+        * Beginne mit der Anrede: "Sehr geehrte/r [Name]," wenn ein Name genannt ist, sonst "Sehr geehrte Damen und Herren,".
+        * Kein Datum, keine Adresse, kein Betreff, keine Grußformel und keine Unterschrift am Ende. Das ergänzt die Anwendung.
+        * Der erste Satz enthält etwas Konkretes. Keine Floskeln wie "hiermit bewerbe ich mich" oder "mit großem Interesse habe ich Ihre Stellenanzeige gelesen".
+        * Jede Aussage wird im selben Absatz belegt. Keine Wiederholung des Lebenslaufs.
+        * Keine Einleitung, keine Notizen, keine Analysen, keine Erklärungen. Gib nur den Brieftext aus.
+
     user_en: |
         Respond in English Language.
         Write one tailored cover letter following the system instructions exactly.
-        Use only the information given below. Do not add, infer beyond what is reasonable, or fabricate any detail not present in the candidate profile or the company/job information. Make it 250-400 words. No more than one page.
+        Use only the information given below. Do not add, infer beyond what is reasonable, or fabricate any detail not present in the candidate profile or the company/job information.
+
+        Requirements:
+        * 250-400 words, no more than one page, four to five short paragraphs.
+        * Open with a greeting line, then a first sentence that says something concrete. No "I am writing to apply for" opening.
+        * No date, address, subject line, sign-off, or signature at the end. The application adds those.
+        * Back every claim with proof from the profile in the same paragraph. Do not restate the CV.
+        * Output only the letter text: no preamble, notes, analysis, or explanations.
 
 company_name_extraction:
     system: |
