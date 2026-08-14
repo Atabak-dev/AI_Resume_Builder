@@ -8,8 +8,10 @@ LLM-callable tools for automated company research.
 - `HostApprovalGate`: the user approves each new host once per run before any
   page on it is fetched (Wikipedia and the search endpoint itself are
   auto-allowed, plus anything listed in the repo-root `allowed_domains.txt`
-  via `HostApprovalGate.load_domains_file()`). Every fetch is still traced to
-  the console, even on an already-approved host, so nothing happens invisibly.
+  via `HostApprovalGate.load_domains_file()`). That file is gitignored and
+  per-user; `load_domains_file()` creates it from `DEFAULT_DOMAINS_FILE_TEMPLATE`
+  the first time it is missing. Every fetch is still traced to the console,
+  even on an already-approved host, so nothing happens invisibly.
 - the privacy contract (`src.utils.privacy.PersonalInfoScrubber`): outbound
   queries/URLs containing the candidate's personal info are hard-blocked;
   inbound page text is scrubbed before it re-enters the LLM.
@@ -17,11 +19,28 @@ LLM-callable tools for automated company research.
 
 import json
 import logging
+import os
 import sys
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_DOMAINS_FILE_TEMPLATE = """\
+# Hosts listed here are auto-approved for the company-research tool calls
+# (web_search / fetch_page / wikipedia_page) - the assistant will never be
+# asked to confirm them, on top of the built-in defaults (Wikipedia, the
+# search endpoint). Everything else still prompts once per run.
+#
+# This file is local to your machine (gitignored) - one host per line.
+# Lines starting with '#' and blank lines are ignored. A scheme, "www.",
+# a port, or a path is tolerated and stripped, so
+# "https://www.example.com/about" and "example.com" are equivalent.
+#
+# Example:
+# linkedin.com
+# crunchbase.com
+"""
 
 
 def _normalize_host(url: str) -> str:
@@ -75,13 +94,23 @@ class HostApprovalGate:
         return sorted(self._approved | self._auto_allow)
 
     @classmethod
-    def load_domains_file(cls, path: str) -> set:
+    def load_domains_file(cls, path: str, create_if_missing: bool = True) -> set:
         """Read a user-maintained list of pre-approved hosts.
 
         One host per line (e.g. `example.com`); `#` starts a comment, blank
         lines are ignored, and a scheme/`www.`/port/path on a line is
-        tolerated and stripped. Missing file just means "no extra hosts".
+        tolerated and stripped. The file is per-user (gitignored); if it
+        doesn't exist yet, it is created from `DEFAULT_DOMAINS_FILE_TEMPLATE`
+        so each user gets their own empty, documented copy on first run.
         """
+        if create_if_missing and not os.path.exists(path):
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(DEFAULT_DOMAINS_FILE_TEMPLATE)
+                logger.info(f"Created default allowed-domains file at {path}")
+            except OSError as e:
+                logger.warning(f"Could not create allowed-domains file at {path}: {e}")
+
         domains = set()
         try:
             with open(path, "r", encoding="utf-8") as f:

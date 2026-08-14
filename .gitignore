@@ -1,6 +1,7 @@
 data/*
 outputs/*
 .env
+allowed_domains.txt
 src/pipeline/__pycache__/
 src/utils/__pycache__/
 test.*
