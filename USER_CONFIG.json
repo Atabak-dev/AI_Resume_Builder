@@ -5,7 +5,8 @@
     "location": true,
     "phone": true,
     "email": true,
-    "linkedin": true
+    "linkedin": true,
+    "github": true
   },
   "paths": {
     "data": "data",

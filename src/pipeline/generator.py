@@ -345,7 +345,26 @@ class Generator_Handler:
                 (p for p in profiles if isinstance(p, str) and "linkedin.com" in p.lower()),
                 "",
             )
-        
+        github_profile = next(
+            (
+                p
+                for p in profiles
+                if isinstance(p, dict)
+                and p.get("network", "").strip().lower() == "github"
+                and p.get("url")
+            ),
+            None,
+        )
+        github_url = github_profile.get("url", "") if github_profile else ""
+        github_username = github_profile.get("username", "") if github_profile else ""
+        if not github_url:
+            github_url = next(
+                (p for p in profiles if isinstance(p, str) and "github.com" in p.lower()),
+                "",
+            )
+        if github_url and not github_username:
+            github_username = github_url.rstrip("/").split("/")[-1]
+
         # Determine location based on USER_CONFIG setting
         user_config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'USER_CONFIG.json')
 
@@ -362,6 +381,7 @@ class Generator_Handler:
         include_phone = contact_fields.get('phone', True)
         include_email = contact_fields.get('email', True)
         include_linkedin = contact_fields.get('linkedin', True)
+        include_github = contact_fields.get('github', True)
 
         # Get location from job if configured and available
         if not include_location:
@@ -407,6 +427,8 @@ class Generator_Handler:
             contact_parts.append(f"[{email}](mailto:{email})")
         if include_linkedin and linkedin_url:
             contact_parts.append(f"[LinkedIn]({linkedin_url})")
+        if include_github and github_url:
+            contact_parts.append(f"[{github_username or 'GitHub'}]({github_url})")
         contact = " | ".join(contact_parts)
         
         # Create personal info section
@@ -670,7 +692,7 @@ class Generator_Handler:
     def _render_contact_info_html_cv(self, line: str) -> str:
         """
         Convert:
-        <<contact info>> City, Country | [phone](tel:+1-555-0100) | [email](mailto:a@b.com) | [LinkedIn](https://...)
+        <<contact info>> City, Country | [phone](tel:+1-555-0100) | [email](mailto:a@b.com) | [LinkedIn](https://...) | [username](https://github.com/...)
         to:
         <div class="contact-info">City, Country <span class="sep">|</span> <a href="tel:...">phone</a> ...</div>
         """
