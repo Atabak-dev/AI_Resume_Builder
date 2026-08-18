@@ -23,7 +23,7 @@
             "max_tokens": 2000
         },
         "cv_generation": {
-            "max_tokens": 2500
+            "max_tokens": 4500
         },
         "quick_test": {
             "max_tokens": 100,
