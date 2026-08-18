@@ -24,6 +24,8 @@ import sys
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
+from src.utils.scraper import WikiArticle, title_matches_company
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_DOMAINS_FILE_TEMPLATE = """\
@@ -150,6 +152,8 @@ class ResearchToolbox:
         max_fetches: int = 8,
         max_searches: int = 6,
         default_search_results: int = 5,
+        company_name: str = "",
+        legal_name: str = "",
     ):
         self.scrubber = scrubber
         self.gate = gate
@@ -160,6 +164,8 @@ class ResearchToolbox:
         self.max_fetches = max_fetches
         self.max_searches = max_searches
         self.default_search_results = default_search_results
+        self.company_name = company_name
+        self.legal_name = legal_name
 
         self._fetch_count = 0
         self._search_count = 0
@@ -167,6 +173,7 @@ class ResearchToolbox:
         self._sources: List[str] = []
         self._dossier_parts: List[str] = []
         self._page_cache: Dict[str, Dict[str, Any]] = {}
+        self.wikipedia_official_website: Optional[str] = None
 
     # ------------------------------------------------------------------ #
     # Tools
@@ -224,6 +231,19 @@ class ResearchToolbox:
 
         if not url.startswith(("http://", "https://")):
             return {"status": "error", "url": url, "error": "URL must start with http:// or https://"}
+
+        parsed_wiki = self.wiki.parse_article_url(url)
+        if parsed_wiki:
+            # Wikipedia articles always go through wikipedia_page(), which
+            # verifies the article names the company and is an organisation -
+            # fetch_page() has no such check and would otherwise scrape any
+            # wikipedia.org URL as plain HTML.
+            language, title = parsed_wiki
+            result = self.wikipedia_page(title, language=language)
+            result["redirected_from"] = url
+            result["note"] = ("Wikipedia URLs are handled by wikipedia_page(), which verifies the "
+                              "article before use - call wikipedia_page directly next time.")
+            return result
 
         if url in self._page_cache:
             return self._page_cache[url]
@@ -289,6 +309,23 @@ class ResearchToolbox:
                               "Do NOT accept a similarly-named article - a different company with a "
                               "similar name is worse than no article. Continue with the official website."}
 
+        # resolve_article() only checked the model's own requested title
+        # against the article it found - that self-validates whatever the
+        # model asked for. Cross-check the resolved article against the
+        # real company identity this toolbox was built for.
+        real_names = [n for n in (self.company_name, self.legal_name) if n and n.strip()]
+        if real_names and not any(
+            title_matches_company(name, article.title, min_coverage=0.5) for name in real_names
+        ):
+            logger.warning(
+                f"Rejecting Wikipedia article {article.language}:{article.title} (requested as "
+                f"'{title}'): does not match the real company name(s) {real_names}."
+            )
+            return {"status": "rejected", "requested_title": title, "resolved_title": article.title,
+                    "url": article.url,
+                    "message": "This article does not verifiably match the company being researched. "
+                              "Do not retry with a different title - continue with the official website."}
+
         if not self.gate.request(article.url, reason=f"Wikipedia article for {title}"):
             print(f"  x  denied: {article.url}  (host {_normalize_host(article.url)})")
             return {"status": "denied", "url": article.url, "host": _normalize_host(article.url),
@@ -309,14 +346,51 @@ class ResearchToolbox:
         self._sources.append(article.url)
         self._dossier_parts.append(f"=== PAGE: {article.url} ===\n{scrubbed}")
         print(f"     ok, {len(scrubbed)} chars" + (" (truncated)" if truncated else ""))
+        if article.official_website:
+            self.wikipedia_official_website = article.official_website
+            print(f"     official website (from Wikipedia): {article.official_website}")
 
         result = {"status": "ok", "requested_title": title, "title": article.title,
                   "language": article.language, "url": article.url,
-                  "text": scrubbed, "truncated": truncated}
+                  "text": scrubbed, "truncated": truncated,
+                  "official_website": article.official_website}
         if article.title != title or article.language != self.wiki.language:
             result["note"] = (f"Resolved '{title}' to the {article.language}-edition article "
                               f"'{article.title}'.")
         return result
+
+    def manual_wikipedia(self, url: str) -> dict:
+        """Fetch a Wikipedia article URL the user typed in by hand.
+
+        Supplying it *is* the assertion that it is the right article - the
+        same reasoning as HostApprovalGate.approve() for a manually-entered
+        website - so entity/title verification is skipped.
+        """
+        parsed = self.wiki.parse_article_url(url)
+        if not parsed:
+            return {"status": "error", "url": url, "error": "Not a wikipedia.org article URL."}
+        language, title = parsed
+
+        if self._fetch_count >= self.max_fetches:
+            return {"status": "budget_exceeded",
+                    "message": f"Fetch budget of {self.max_fetches} pages used up."}
+
+        article = WikiArticle(title, language, url)
+        text = self.wiki.fetch_article(article)
+        if not text:
+            return {"status": "not_found", "url": url}
+
+        scrubbed = self.scrubber.scrub(text, min_length=3)
+        truncated = len(scrubbed) > self.max_page_chars
+        scrubbed = scrubbed[:self.max_page_chars]
+
+        self._fetch_count += 1
+        self._sources.append(url)
+        self._dossier_parts.append(f"=== PAGE: {url} ===\n{scrubbed}")
+        print(f"     ok, {len(scrubbed)} chars" + (" (truncated)" if truncated else ""))
+
+        return {"status": "ok", "url": url, "title": title, "language": language,
+                "text": scrubbed, "truncated": truncated}
 
     # ------------------------------------------------------------------ #
     # Dispatch / schemas / results
@@ -375,7 +449,9 @@ class ResearchToolbox:
                 "name": "fetch_page",
                 "description": ("Fetch the readable text and internal links of one page. The user must "
                                 "approve each new host; if the result status is 'denied', do not retry "
-                                "that host - use another source."),
+                                "that host - use another source. Never point this at a wikipedia.org "
+                                "URL - it is automatically re-routed to wikipedia_page, which verifies "
+                                "the article; call wikipedia_page directly instead."),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -388,11 +464,18 @@ class ResearchToolbox:
             }},
             {"type": "function", "function": {
                 "name": "wikipedia_page",
-                "description": ("Fetch the plain text of a Wikipedia article. Prefer passing the exact "
-                                "title from a https://<lang>.wikipedia.org/wiki/<Title> URL you found "
-                                "with web_search (URL-decode it and turn '_' into spaces), together with "
-                                "its language. A title that does not verifiably name the same company is "
-                                "rejected rather than guessed at - status will be 'not_found'."),
+                "description": ("Fetch the plain text of a Wikipedia article, verified to be about this "
+                                "company and to be an organisation (not a person, place, or unrelated "
+                                "term that merely shares its name). Prefer passing the exact title from "
+                                "a https://<lang>.wikipedia.org/wiki/<Title> URL you found with "
+                                "web_search (URL-decode it and turn '_' into spaces), together with its "
+                                "language. Most small or privately-held companies have NO Wikipedia "
+                                "article at all - that is a normal result, not a failure: status "
+                                "'not_found' means nothing confidently matched, and 'rejected' means a "
+                                "candidate article was found but failed verification. Either way, do not "
+                                "retry with a different or similar title - move on to the official "
+                                "website. On success, a returned 'official_website' should be preferred "
+                                "as the homepage to fetch_page next."),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -414,6 +497,14 @@ class ResearchToolbox:
     @property
     def sources(self) -> List[str]:
         return list(dict.fromkeys(self._sources))
+
+    @property
+    def has_wikipedia_source(self) -> bool:
+        return any(HostApprovalGate._is_wikipedia(_normalize_host(s)) for s in self._sources)
+
+    @property
+    def has_website_source(self) -> bool:
+        return any(not HostApprovalGate._is_wikipedia(_normalize_host(s)) for s in self._sources)
 
 
 if __name__ == "__main__":

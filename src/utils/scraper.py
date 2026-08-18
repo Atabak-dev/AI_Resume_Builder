@@ -49,6 +49,43 @@ _LEGAL_FORM_STOPWORDS = {
     "of", "for", "et", "la", "le", "les",
 }
 
+# Wikidata "instance of" (P31) values that mean "this article is about an
+# organisation" - the anchor of the entity check that stops a same-named but
+# unrelated article (a Go opening, a person, a village, ...) from being
+# accepted as a company's Wikipedia source. Deliberately broad across sectors
+# rather than an exhaustive taxonomy; a P279 ("subclass of") hop from a more
+# specific P31 value is also accepted (see classify_article()).
+_WIKIDATA_ORG_TYPES = {
+    "Q4830453",   # business
+    "Q6881511",   # enterprise
+    "Q783794",    # company
+    "Q891723",    # public company
+    "Q167037",    # corporation
+    "Q43229",     # organization
+    "Q163740",    # nonprofit organization
+    "Q3918",      # university
+    "Q31855",     # research institute
+    "Q327333",    # government agency
+    "Q18388277",  # technology company
+    "Q1058914",   # software company
+    "Q4830453",   # (dup kept for readability of the list above)
+    "Q431289",    # brand
+    "Q2401749",   # public institution
+    "Q1616075",   # startup company
+    "Q15911314",  # corporate group
+    "Q1057304",   # holding company
+}
+
+# Category-title fallback when Wikidata is unreachable or the article has no
+# wikibase item. Deliberately looser than _WIKIDATA_ORG_TYPES since a title
+# alone can't distinguish sectors.
+_ORG_CATEGORY_RE = re.compile(
+    r"compan|corporat|business|enterprise|manufactur|employers|brands|"
+    r"subsidiar|unternehmen|hersteller|firmen|arbeitgeber|dienstleist|"
+    r"bank|verlag|organi[sz]ation",
+    re.IGNORECASE,
+)
+
 # Two-part public suffixes where the registrable label sits one segment
 # further left than a naive host.split(".")[-2] would find.
 _MULTI_PART_SUFFIXES = {
@@ -76,6 +113,25 @@ def _is_non_official(host: str) -> bool:
     if host.startswith("www."):
         host = host[4:]
     return any(host == bad or host.endswith("." + bad) for bad in _NON_OFFICIAL_HOSTS)
+
+
+def _claim_qids(claims: dict, prop: str) -> List[str]:
+    """Q-ids of a wikibase-item claim, e.g. claims["P31"] -> ["Q4830453", ...]."""
+    ids = []
+    for statement in claims.get(prop, []) or []:
+        value = (statement.get("mainsnak", {}) or {}).get("datavalue", {}).get("value")
+        if isinstance(value, dict) and value.get("id"):
+            ids.append(value["id"])
+    return ids
+
+
+def _claim_url(claims: dict, prop: str) -> Optional[str]:
+    """First plain-string value of a url-typed claim, e.g. claims["P856"]."""
+    for statement in claims.get(prop, []) or []:
+        value = (statement.get("mainsnak", {}) or {}).get("datavalue", {}).get("value")
+        if isinstance(value, str) and value:
+            return value
+    return None
 
 
 _WIKI_HOST_RE = re.compile(r"^(?P<lang>[a-z][a-z0-9-]{1,11})\.(?:m\.)?wikipedia\.org$")
@@ -144,6 +200,8 @@ class WikiArticle(NamedTuple):
     title: str      # human-readable, percent-decoded, spaces not underscores
     language: str   # edition code: 'en', 'de', 'simple', ...
     url: str
+    official_website: Optional[str] = None  # from Wikidata P856, or an extlinks fallback
+    verified: bool = False  # True once classify_article() confirmed an organisation
 
 
 class WikipediaScraper:
@@ -171,8 +229,37 @@ class WikipediaScraper:
         self.provider = provider
         self.scrubber = scrubber
         self._clients: Dict[str, "wikipediaapi.Wikipedia"] = {}
+        self._meta_cache: Dict[Tuple[str, str], Optional[dict]] = {}
+        self._wd_cache: Dict[str, Optional[dict]] = {}
+        self._last_api_call: Dict[str, float] = {}
         self.wikipedia = self._client(self.language)
         logger.info("Wikipedia scraper initialized successfully")
+
+    def _api_get(self, host: str, params: dict, *, min_interval: float = 0.2) -> Optional[dict]:
+        """GET on *host*'s api.php, throttled per host and retried once on a
+        429 - the entity check (_page_meta + up to 6 _wikidata_claims calls
+        per candidate article) is bursty enough to get rate-limited without
+        this, which would otherwise surface as a false "unverifiable"."""
+        elapsed = time.monotonic() - self._last_api_call.get(host, 0.0)
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+        url = f"https://{host}/w/api.php"
+        for attempt in range(2):
+            self._last_api_call[host] = time.monotonic()
+            try:
+                resp = requests.get(url, params=params, timeout=10,
+                                    headers={"User-Agent": self.user_agent})
+                if resp.status_code == 429:
+                    retry_after = float(resp.headers.get("Retry-After", 1.0))
+                    logger.debug(f"{host} rate-limited us; retrying after {retry_after}s")
+                    time.sleep(min(retry_after, 5.0))
+                    continue
+                resp.raise_for_status()
+                return resp.json()
+            except Exception as exc:
+                logger.warning(f"Request to {host} failed: {exc}")
+                return None
+        return None
 
     def _client(self, language: Optional[str] = None) -> "wikipediaapi.Wikipedia":
         language = language or self.language
@@ -233,7 +320,6 @@ class WikipediaScraper:
         if not self._guard(query, "opensearch query"):
             return []
         language = language or self.language
-        url = f"https://{language}.wikipedia.org/w/api.php"
         params = {
             "action": "opensearch",
             "search": query,
@@ -241,17 +327,10 @@ class WikipediaScraper:
             "namespace": 0,
             "format": "json",
         }
-        try:
-            resp = requests.get(url, params=params, timeout=10,
-                                headers={"User-Agent": ROBOTS_USER_AGENT})
-            resp.raise_for_status()
-            data = resp.json()
-            titles = data[1] if len(data) > 1 else []
-            logger.info(f"Wikipedia opensearch for '{query}' -> {titles}")
-            return titles
-        except Exception as exc:
-            logger.warning(f"Wikipedia opensearch failed for '{query}': {exc}")
-            return []
+        data = self._api_get(f"{language}.wikipedia.org", params)
+        titles = data[1] if data and len(data) > 1 else []
+        logger.info(f"Wikipedia opensearch for '{query}' -> {titles}")
+        return titles
 
     def _is_disambiguation(self, title: str, text: str) -> bool:
         lowered = title.lower()
@@ -262,6 +341,166 @@ class WikipediaScraper:
         ):
             return True
         return False
+
+    def _page_meta(self, language: str, title: str) -> Optional[dict]:
+        """One MediaWiki call: redirect-resolved title, Wikidata Q-id, the
+        disambiguation pageprop, and the article's categories. None on any
+        failure or a missing page - callers must treat that as "unknown",
+        never as "yes"."""
+        if not self._guard(title, "page metadata query"):
+            return None
+        cache_key = (language, title)
+        if cache_key in self._meta_cache:
+            return self._meta_cache[cache_key]
+        params = {
+            "action": "query",
+            "titles": title,
+            "prop": "pageprops|categories",
+            "redirects": 1,
+            "cllimit": "max",
+            "format": "json",
+        }
+        meta: Optional[dict] = None
+        data = self._api_get(f"{language}.wikipedia.org", params)
+        if data is not None:
+            pages = (data.get("query", {}) or {}).get("pages", {}) or {}
+            page = next(iter(pages.values()), {})
+            if "missing" not in page:
+                pageprops = page.get("pageprops", {}) or {}
+                meta = {
+                    "title": page.get("title", title),
+                    "qid": pageprops.get("wikibase_item"),
+                    "disambiguation": "disambiguation" in pageprops,
+                    "categories": [c.get("title", "") for c in (page.get("categories", []) or [])],
+                }
+        self._meta_cache[cache_key] = meta
+        return meta
+
+    def _wikidata_claims(self, qid: Optional[str]) -> Optional[dict]:
+        """Claims for a Wikidata Q-id. The outbound payload is a bare Q-id,
+        so it carries no personal-info risk; still guarded for consistency."""
+        if not qid or not self._guard(qid, "wikidata claims query"):
+            return None
+        if qid in self._wd_cache:
+            return self._wd_cache[qid]
+        params = {"action": "wbgetentities", "ids": qid, "props": "claims", "format": "json"}
+        claims: Optional[dict] = None
+        data = self._api_get("www.wikidata.org", params)
+        if data is not None:
+            entity = (data.get("entities", {}) or {}).get(qid, {}) or {}
+            if "missing" not in entity:
+                claims = entity.get("claims", {}) or {}
+        self._wd_cache[qid] = claims
+        return claims
+
+    def _extlink_website(self, language: str, title: str, company_name: str) -> Optional[str]:
+        """Fallback official website when Wikidata has no P856: the
+        article's first external link that isn't a known aggregator and
+        plausibly belongs to *company_name*, reusing the same host-scoring
+        helpers CompanyWebsiteScraper._search_official_website() uses for
+        search results."""
+        if not self._guard(title, "extlinks query"):
+            return None
+        params = {"action": "query", "titles": title, "prop": "extlinks", "ellimit": "max", "format": "json"}
+        data = self._api_get(f"{language}.wikipedia.org", params)
+        if data is None:
+            return None
+        pages = (data.get("query", {}) or {}).get("pages", {}) or {}
+        page = next(iter(pages.values()), {})
+        links = [l.get("*", "") for l in (page.get("extlinks", []) or [])]
+
+        tokens = significant_tokens(company_name) if company_name else []
+        for link in links:
+            if not link:
+                continue
+            if not link.startswith(("http://", "https://")):
+                link = f"https://{link}"
+            host = urlparse(link).netloc.lower()
+            if not host or _is_non_official(host):
+                continue
+            if tokens and not any(t in _registrable_label(host) for t in tokens):
+                continue
+            parsed = urlparse(link)
+            return f"{parsed.scheme}://{parsed.netloc}/"
+        return None
+
+    def classify_article(self, language: str, title: str,
+                         company_name: str = "") -> Tuple[Optional[bool], Optional[str]]:
+        """Tri-state check of whether *title* is about an organisation, plus
+        its official website when one can be determined.
+
+        Wikidata's P31 taxonomy for companies is deep and sector-specific
+        (a railway operator's P31 is "railway company", a state-owned one is
+        also "state-owned enterprise", neither of which is literally
+        "business" or "company", and a one-hop P279 climb does not always
+        reach a type on _WIKIDATA_ORG_TYPES either - Deutsche Bahn's actual
+        Wikidata item needed exactly this). So a Wikidata miss does NOT
+        override a category match - the two signals are OR'd, not chained
+        as strict/then/fallback.
+
+        Returns (is_organisation, official_website):
+          - (False, None) - a disambiguation page, or both Wikidata and the
+            categories agree it is not an organisation.
+          - (True, url_or_None) - Wikidata or the categories say it is an
+            organisation.
+          - (None, None) - neither signal could be reached with confidence;
+            callers must treat this as unverifiable, not as a match.
+        """
+        meta = self._page_meta(language, title)
+        if meta is None:
+            return None, None
+        if meta["disambiguation"]:
+            return False, None
+
+        wikidata_says_org: Optional[bool] = None
+        claims: Optional[dict] = None
+        qid = meta.get("qid")
+        if qid:
+            claims = self._wikidata_claims(qid)
+            if claims is not None:
+                instance_of = _claim_qids(claims, "P31")
+                if instance_of:
+                    if any(q in _WIKIDATA_ORG_TYPES for q in instance_of):
+                        wikidata_says_org = True
+                    else:
+                        wikidata_says_org = False
+                        for parent_qid in instance_of[:5]:
+                            parent_claims = self._wikidata_claims(parent_qid)
+                            if parent_claims and any(
+                                p in _WIKIDATA_ORG_TYPES for p in _claim_qids(parent_claims, "P279")
+                            ):
+                                wikidata_says_org = True
+                                break
+                # else: a real Wikidata item with no P31 at all - stays None, categories decide.
+
+        if wikidata_says_org is True:
+            website = (_claim_url(claims, "P856") if claims else None) \
+                or self._extlink_website(language, title, company_name)
+            return True, website
+
+        categories = meta.get("categories", [])
+        if any(_ORG_CATEGORY_RE.search(c) for c in categories):
+            return True, self._extlink_website(language, title, company_name)
+
+        if wikidata_says_org is False or len(categories) >= 3:
+            return False, None
+        return None, None
+
+    def _accept(self, language: str, title: str, company_name: str, *,
+                min_coverage: float = 1.0) -> Optional[WikiArticle]:
+        """The single gate every candidate article passes through: the title
+        must name the same company AND Wikidata/categories must confirm it
+        is an organisation. Never guesses on an unverifiable entity type."""
+        if not title_matches_company(company_name, title, min_coverage=min_coverage):
+            return None
+        if self._is_disambiguation(title, ""):
+            return None
+        is_org, website = self.classify_article(language, title, company_name)
+        if is_org is not True:
+            reason = "not an organisation" if is_org is False else "entity type could not be verified"
+            logger.warning(f"Rejecting Wikipedia article {language}:{title} for '{company_name}': {reason}")
+            return None
+        return WikiArticle(title, language, self._article_url(language, title), website, True)
 
     def find_article_via_search(self, company_name: str, provider: Any = None) -> Optional[WikiArticle]:
         """Locate the company's Wikipedia article by searching the web for it."""
@@ -274,9 +513,10 @@ class WikipediaScraper:
                 if not parsed:
                     continue
                 lang, title = parsed
-                if title_matches_company(company_name, title, min_coverage=0.5):
+                article = self._accept(lang, title, company_name, min_coverage=0.5)
+                if article:
                     logger.info(f"Wikipedia article for '{company_name}' found via search: {lang}:{title}")
-                    return WikiArticle(title, lang, self._article_url(lang, title))
+                    return article
             if getattr(provider, "last_status", "ok") == "blocked":
                 break
         return None
@@ -285,11 +525,12 @@ class WikipediaScraper:
                         language: Optional[str] = None) -> Optional[WikiArticle]:
         """Return the best-verified WikiArticle for *company_name*, or None.
 
-        Never guesses: a candidate is only accepted when it passes
-        title_matches_company(). Order: exact title in the preferred edition
-        -> search-engine lookup (preferring the configured language via
-        langlinks, but keeping a foreign-edition hit when there is no
-        counterpart) -> opensearch fallback.
+        Never guesses: a candidate is only accepted by _accept(), which
+        requires both title_matches_company() and classify_article() to
+        confirm the entity is an organisation. Order: exact title in the
+        preferred edition -> search-engine lookup (preferring the configured
+        language via langlinks, but keeping a foreign-edition hit when there
+        is no counterpart) -> opensearch fallback.
         """
         if not self._guard(company_name, "wikipedia lookup"):
             return None
@@ -297,9 +538,10 @@ class WikipediaScraper:
         target_language = language or self.language
         client = self._client(target_language)
         page = client.page(company_name)
-        if page.exists() and title_matches_company(company_name, page.title, min_coverage=1.0):
-            if not self._is_disambiguation(page.title, page.text if hasattr(page, "text") else ""):
-                return WikiArticle(page.title, target_language, self._article_url(target_language, page.title))
+        if page.exists():
+            article = self._accept(target_language, page.title, company_name, min_coverage=1.0)
+            if article:
+                return article
 
         found = self.find_article_via_search(company_name, provider)
         if found:
@@ -309,16 +551,22 @@ class WikipediaScraper:
                     links = origin_page.langlinks
                     hop = links.get(target_language)
                     if hop is not None:
-                        return WikiArticle(hop.title, target_language,
-                                          self._article_url(target_language, hop.title))
+                        hop_article = self._accept(target_language, hop.title, company_name, min_coverage=0.5)
+                        if hop_article:
+                            return hop_article
+                        logger.warning(
+                            f"Langlink hop {found.language}:{found.title} -> {target_language}:{hop.title} "
+                            "did not pass verification; keeping the source-language article instead."
+                        )
                 except Exception as exc:
                     logger.debug(f"langlinks lookup failed for {found.language}:{found.title}: {exc}")
             return found
 
         candidates = self.search_titles(company_name, language=target_language)
         for title in candidates:
-            if title_matches_company(company_name, title, min_coverage=1.0):
-                return WikiArticle(title, target_language, self._article_url(target_language, title))
+            article = self._accept(target_language, title, company_name, min_coverage=1.0)
+            if article:
+                return article
 
         return None
 
@@ -367,25 +615,20 @@ class WikipediaScraper:
         logger.info(f"Extracting Wikipedia page: {wikipedia_page_name}")
         language = language or self.language
         page = self._client(language).page(wikipedia_page_name)
-        if not page.exists() and auto_resolve:
+        if page.exists():
+            article = self._accept(language, page.title, wikipedia_page_name, min_coverage=1.0)
+            if article:
+                return self.fetch_article(article)
+            logger.warning(f"'{wikipedia_page_name}' exists but did not pass entity verification.")
+
+        if auto_resolve:
             article = self.resolve_article(wikipedia_page_name, language=language)
             if article:
                 logger.info(f"Resolved '{wikipedia_page_name}' -> '{article.language}:{article.title}'")
                 return self.fetch_article(article)
 
-        if not page.exists():
-            logger.error(f"No Wikipedia page found for: {wikipedia_page_name}")
-            return ""
-
-        logger.debug(f"Wikipedia page found: {wikipedia_page_name}")
-
-        try:
-            page_text = page.text
-            logger.info(f"Successfully extracted Wikipedia page text. Length: {len(page_text)} characters")
-            return page_text
-        except Exception as e:
-            logger.error(f"Error extracting Wikipedia page text: {e}")
-            return ""
+        logger.error(f"No Wikipedia page found for: {wikipedia_page_name}")
+        return ""
 
 
 class CompanyWebsiteScraper:

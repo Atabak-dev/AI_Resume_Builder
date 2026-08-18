@@ -202,7 +202,9 @@ Wikipedia-only lookup. Building blocks:
   budget (`max_searches`, default 6) separate from `fetch_page`'s `max_fetches`, and an empty result
   carries a `hint` field telling the model whether to reword once or stop searching entirely — this
   is what stops the tool loop from burning all its iterations rewording a query against a blocked
-  search backend.
+  search backend. `fetch_page` re-routes any `wikipedia.org` URL straight into `wikipedia_page`
+  instead of scraping it as plain HTML, so the entity check below can't be bypassed by asking for a
+  Wikipedia page through the wrong tool.
 - [src/pipeline/llm_client.py](src/pipeline/llm_client.py) — `run_tool_loop()` drives the
   tool-calling conversation (see the LLM client section above for the tools/`response_format`
   separation rule).
@@ -210,12 +212,36 @@ Wikipedia-only lookup. Building blocks:
   ranks real search results (rejecting LinkedIn/Glassdoor/Crunchbase/etc. by exact-or-suffix host
   match, not substring) using `significant_tokens()` (legal-form/generic-corporate stopwords
   stripped) matched against `_registrable_label()` (aware of two-part suffixes like `co.uk`).
-  `WikipediaScraper.resolve_article()` returns a `WikiArticle(title, language, url)` or `None` —
-  never a guess: it prefers finding the article's URL via the search provider (so
-  `title_matches_company()`'s anchor-token check can verify it's really the same company before
-  accepting), hops to the configured language edition via `langlinks()` when one exists, and falls
-  back to the MediaWiki `opensearch` API filtered the same way. `wikipedia-api` 0.15.0 does expose
-  `.search()`/`.langlinks()` despite older assumptions to the contrary.
+  `WikipediaScraper.resolve_article()` returns a `WikiArticle(title, language, url,
+  official_website, verified)` or `None` — never a guess. Every candidate title (the exact-title
+  probe, each search-engine hit, the `langlinks()` edition hop, each `opensearch` result) is routed
+  through the single gate `_accept()`, which requires **both**:
+  1. `title_matches_company()` — the anchor-token check that the title names the same company, and
+  2. `classify_article()` — a tri-state check (`True`/`False`/`None` for "unverifiable") of whether
+     the article is actually about an *organisation*. It reads the article's Wikidata item (`P31`
+     "instance of", one `P279` "subclass of" hop if the direct value isn't in
+     `_WIKIDATA_ORG_TYPES`), falling back to a category-title regex (`_ORG_CATEGORY_RE`) when the
+     article has no wikibase item or Wikidata can't be reached. `True` or `False` are decisive;
+     `None` (unverifiable) is treated as a rejection, never as a pass — see "Known rough edges" for
+     why this existed as a gap (`en:Fuseki`, the Go opening, used to pass for `fuseki GmbH` on title
+     matching alone).
+
+  `classify_article()` also returns the article's official website when the entity check passes —
+  `P856` from the same Wikidata claims, or `WikipediaScraper._extlink_website()` (the article's
+  first external link that isn't a known aggregator and shares a token with the company name, via
+  the same `_is_non_official()`/`_registrable_label()` helpers `find_official_website()` uses) when
+  `P856` is absent. This is what lets a verified Wikipedia article seed the next scraping step
+  instead of a fresh search (see below). `wikipedia-api` 0.15.0 does expose `.search()`/
+  `.langlinks()` despite older assumptions to the contrary.
+
+  `ResearchToolbox.wikipedia_page()` adds one more check on top of `resolve_article()`: the
+  *resolved* article's title is cross-checked against the toolbox's real `company_name`/
+  `legal_name` (`title_matches_company(..., min_coverage=0.5)`), not just against whatever title the
+  model itself asked for — `resolve_article()` alone can't tell a self-consistent wrong request from
+  a right one, since the model's own input *is* the `company_name` argument it receives. A failure
+  here returns `status: "rejected"` (article found but not verifiably this company) as distinct from
+  `status: "not_found"` (nothing matched at all); the system prompt tells the model not to retry
+  either with a different title.
 
 New tool code adding a network call must go through
 `src/utils/privacy.py:PersonalInfoScrubber` on both ends — see the privacy-contract note in
@@ -225,12 +251,25 @@ first `web_search` query is seeded from the registered legal name and job locati
 from `JobInfo`), not just the short common name — a bare short name collides with unrelated
 products/projects (`Fuseki` vs. Apache Jena's SPARQL server `Fuseki`).
 
-When `get_search_provider()` returns `None` (no API key configured) or the tool loop finishes with
-`toolbox.sources` still empty, `_research_company()` calls `_prompt_manual_website()` and asks the
-user to paste the company's official website directly; `gate.approve()` whitelists that host before
-`_official_site_scraping()` (the same homepage-then-linked-pages flow used for the
-`ToolsUnsupportedError` fallback) fetches it. Controlled by `research.manual_website_fallback` in
-`USER_CONFIG.json` (default `true`). If research still yields no sources afterwards,
+`_research_company()` ends its automatic phase (both the tool-calling branch and the
+`ToolsUnsupportedError`/no-search-key fallbacks) with two idempotent helpers:
+- `_ensure_wikipedia_attempted()` — if `toolbox.has_wikipedia_source` is still false and
+  `research.manual_wikipedia_fallback` is on, offers a **one-time** prompt
+  (`_prompt_manual_wikipedia()`) to paste the article URL by hand. Supplying it *is* the assertion
+  that it's correct, so `ResearchToolbox.manual_wikipedia()` fetches it through `gate.approve()`
+  with no entity check — same reasoning as a manually-typed website. A blank answer (most
+  companies) is a normal outcome, not retried.
+- `_ensure_website_source()` — if `toolbox.has_website_source` is still false (no *non*-Wikipedia
+  page was ever fetched — the gap that used to let a Wikipedia-only run silently skip the website
+  entirely), tries `toolbox.wikipedia_official_website` first, then `find_official_website()` via
+  search, then `_prompt_manual_website()` as the last resort; whichever homepage is found feeds
+  `_official_site_scraping()`, the same homepage-then-linked-pages flow used by the
+  `ToolsUnsupportedError` fallback. `gate.approve()` is only called for the manually-typed case —
+  an automatically-discovered homepage still goes through the normal interactive host-approval
+  prompt.
+
+Both prompts are controlled by `research.manual_website_fallback` / `research.manual_wikipedia_fallback`
+in `USER_CONFIG.json` (default `true` for both). If research still yields no sources afterwards,
 `_research_company()` returns `("", [])` and prints a warning rather than letting an empty
 `CompanyInfo` get extracted from nothing — `main()` already skips the `company_extraction` call when
 the context string is empty.
@@ -246,6 +285,13 @@ Adding a search backend: implement `.search(query, max_results) -> list[SearchRe
   selected, so the standalone converter always exits with "No file selected".
 - `_select_language()` writes `USER_CONFIG.json` back out but never updates the in-memory
   `language` key first, so the new preference isn't actually persisted.
+- Wikipedia article acceptance used to be pure title-string matching (`title_matches_company()`
+  alone), which let a same-named article about something else entirely through — researching
+  `fuseki GmbH` (no Wikipedia article) resolved to `en.wikipedia.org/wiki/Fuseki`, an opening
+  strategy in the board game Go, because `significant_tokens("fuseki GmbH")` is the single token
+  `["fuseki"]` and any one-token match short-circuited to a pass. Fixed by the entity check in
+  `classify_article()` described in "Web research" above — a same-named article is now rejected
+  unless Wikidata (or its categories) independently confirm it's an organisation.
 - **Do not re-add a keyless DuckDuckGo/Bing scraper.** Both were implemented and removed after live
   testing. DuckDuckGo's HTML endpoint serves a bot-challenge page (HTTP 202, `anomaly-modal` CAPTCHA)
   to most datacenter/residential IPs instead of results — at least an honest, detectable failure.

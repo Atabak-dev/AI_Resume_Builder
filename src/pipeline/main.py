@@ -219,6 +219,31 @@ def _official_site_scraping(llm, toolbox: ResearchToolbox, homepage_url: str, pr
     return toolbox.dossier
 
 
+def _prompt_manual_wikipedia(company_name: str, scrubber: PersonalInfoScrubber) -> Optional[str]:
+    """Ask the user to paste the company's Wikipedia article URL.
+
+    Used when no Wikipedia article could be automatically verified for the
+    company. Many companies - especially small or privately-held ones -
+    simply have no Wikipedia article at all, so a blank answer here is a
+    normal, expected outcome, not a failure to recover from.
+    """
+    raw = input(
+        f'No Wikipedia article could be verified for "{company_name}" (many companies simply do not '
+        'have one). If it does have one, paste its article URL now (or press Enter to skip): '
+    ).strip()
+    if not raw:
+        return None
+    if not WikipediaScraper.parse_article_url(raw):
+        print("  That doesn't look like a wikipedia.org article URL - skipping.")
+        return None
+    hits = scrubber.find_personal_info(raw)
+    if hits:
+        logger.critical(f"PRIVACY: manually entered Wikipedia URL contains personal information {hits}; skipping.")
+        print(f"  !! That URL contains your personal information ({', '.join(hits)}) and will not be used. !!")
+        return None
+    return raw
+
+
 def _prompt_manual_website(company_name: str, scrubber: PersonalInfoScrubber) -> Optional[str]:
     """Ask the user for the company's official website.
 
@@ -257,10 +282,18 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
     `.env.example` - BRAVE_API_KEY / TAVILY_API_KEY / SERPER_API_KEY); falls
     back to asking the user for the company's official website otherwise
     (`_prompt_manual_website`), also offered as a second chance if automatic
-    research comes back with nothing. Set `research.enabled: false` in
-    USER_CONFIG.json to skip straight to a plain Wikipedia lookup (e.g. for
-    offline use), or `research.manual_website_fallback: false` to disable
-    the interactive prompts for unattended runs.
+    research comes back with no non-Wikipedia page. A Wikipedia article is
+    only ever used once `WikipediaScraper.resolve_article()` has verified
+    both that its title names this company and that Wikidata (or, failing
+    that, its categories) confirm it is an organisation - most small or
+    private companies simply have no article, which is treated as a normal
+    outcome, not an error, and the user gets one chance to paste the real
+    article URL by hand (`_prompt_manual_wikipedia`) before research moves on
+    without one. Set `research.enabled: false` in USER_CONFIG.json to skip
+    straight to a plain (still verified) Wikipedia lookup (e.g. for offline
+    use), or `research.manual_website_fallback` / `research.
+    manual_wikipedia_fallback` to `false` to disable the interactive prompts
+    for unattended runs.
 
     Returns:
         (context_text, source_urls)
@@ -278,7 +311,7 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
         wiki = WikipediaScraper(language=language, scrubber=scrubber)
         article = wiki.resolve_article(company_name)
         if not article:
-            logger.warning(f"No Wikipedia article confidently matched '{company_name}'.")
+            logger.warning(f"No verified Wikipedia article found for '{company_name}'.")
             return "", []
         text = wiki.fetch_article(article)
         return scrubber.scrub(text, min_length=3), ([article.url] if text else [])
@@ -301,20 +334,56 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
         max_fetches=research_cfg.get('max_fetches', 8),
         max_searches=research_cfg.get('max_searches', 6),
         default_search_results=research_cfg.get('search_results', 5),
+        company_name=company_name, legal_name=legal_name or "",
     )
-    manual_fallback_enabled = research_cfg.get('manual_website_fallback', True)
+    manual_website_fallback_enabled = research_cfg.get('manual_website_fallback', True)
+    manual_wikipedia_fallback_enabled = research_cfg.get('manual_wikipedia_fallback', True)
+
+    def _ensure_website_source() -> None:
+        """Make sure at least one non-Wikipedia page was fetched. Tries, in
+        order: the official website Wikipedia's own article pointed to, a
+        fresh search, then asking the user - so a run that only managed to
+        verify a Wikipedia article still ends up with the company's own site
+        instead of silently going without one."""
+        if toolbox.has_website_source:
+            return
+        homepage = toolbox.wikipedia_official_website
+        if not homepage and provider is not None:
+            homepage = site.find_official_website(company_name, provider)
+        if homepage:
+            # Found automatically (from Wikipedia or search), not typed in by
+            # the user - still goes through the normal host-approval prompt.
+            _official_site_scraping(llm, toolbox, homepage, prompts)
+        if not toolbox.has_website_source and manual_website_fallback_enabled:
+            url = _prompt_manual_website(company_name, scrubber)
+            if url:
+                print(f'Reading "{company_name}" from {url} instead.')
+                gate.approve(url)
+                _official_site_scraping(llm, toolbox, url, prompts)
+
+    def _ensure_wikipedia_attempted() -> None:
+        """Offer a one-time manual Wikipedia URL when nothing was
+        automatically verified - not a retry loop, since a missing article
+        is the expected outcome for most companies."""
+        if toolbox.has_wikipedia_source or not manual_wikipedia_fallback_enabled:
+            return
+        url = _prompt_manual_wikipedia(company_name, scrubber)
+        if url:
+            gate.approve(url)
+            result = toolbox.manual_wikipedia(url)
+            if result.get("status") != "ok":
+                logger.warning(f"Manually entered Wikipedia URL for '{company_name}' failed: {result}")
+                print(f"  Could not read that page - continuing without a Wikipedia source.")
+        else:
+            logger.info(f"No Wikipedia article available for '{company_name}'; continuing without one.")
 
     summary = ""
     if provider is None:
         logger.info(f"No search backend configured; skipping the automatic research loop for '{company_name}'.")
         print("No search backend configured - skipping the automatic research loop.")
-        if manual_fallback_enabled:
-            url = _prompt_manual_website(company_name, scrubber)
-            if url:
-                print(f'Reading "{company_name}" from {url} instead.')
-                gate.approve(url)
-                toolbox.wikipedia_page(company_name)
-                _official_site_scraping(llm, toolbox, url, prompts)
+        toolbox.wikipedia_page(company_name)
+        _ensure_wikipedia_attempted()
+        _ensure_website_source()
     else:
         system_prompt = prompts.get('company_research', {}).get('system', '')
         context_lines = [f"Company: {company_name}"]
@@ -337,17 +406,9 @@ def _research_company(llm, company_name: str, scrubber: PersonalInfoScrubber, la
             logger.warning("Endpoint does not support tool calling; using the fallback research path.")
             print("Endpoint has no tool-calling support - falling back to manual website discovery.")
             toolbox.wikipedia_page(company_name)
-            homepage = site.find_official_website(company_name, provider)
-            if homepage:
-                _official_site_scraping(llm, toolbox, homepage, prompts)
 
-        if not toolbox.sources and manual_fallback_enabled:
-            print(f"\nAutomatic research for {company_name} found nothing usable.")
-            url = _prompt_manual_website(company_name, scrubber)
-            if url:
-                print(f'Reading "{company_name}" from {url} instead.')
-                gate.approve(url)
-                _official_site_scraping(llm, toolbox, url, prompts)
+        _ensure_wikipedia_attempted()
+        _ensure_website_source()
 
     sources = toolbox.sources
     if not sources:

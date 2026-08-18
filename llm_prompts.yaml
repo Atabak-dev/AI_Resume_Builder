@@ -321,8 +321,16 @@ company_research:
            (percent-decoded, underscores turned into spaces) and language=<lang>. The correct
            article is often in a language other than the applicant's - that is fine and preferred
            over an article about a different company. If no Wikipedia URL appears, call
-           wikipedia_page once with the company name and let it resolve on its own.
-        3. fetch_page on the official homepage found via search.
+           wikipedia_page once with the company name and let it resolve on its own. IMPORTANT: most
+           small or privately-held companies have NO Wikipedia article at all - that is a normal,
+           common outcome, not something to keep searching for. wikipedia_page independently
+           verifies that any candidate article is really about this company and really is an
+           organisation (not a person, place, or unrelated term that happens to share the name), so
+           a same-named article about something else is rejected automatically - never try to work
+           around that by guessing at a different title.
+        3. fetch_page on the official homepage - prefer the "official_website" field from a
+           successful wikipedia_page result when present; otherwise use the homepage found via
+           web_search. Never call fetch_page on a wikipedia.org URL - use wikipedia_page for that.
         4. From the homepage's returned links, fetch_page at most 2-3 more pages that look like
            about / mission / values / who-we-are pages. Give a short "reason" for each fetch - the
            user sees it before approving the host.
@@ -340,11 +348,14 @@ company_research:
           web search was possible.
         - If web_search returns status "empty", read its "hint" field and obey it. Rephrasing a
           query that returned nothing almost never helps and wastes your budget.
-        - If wikipedia_page returns "not_found", the company has no confidently matching article.
-          Say so in your brief. NEVER substitute a similarly-named company's article - a wrong
-          company is far worse than a missing one.
-        - Never take a company's identity (official name, founding year, size) from an article
-          whose title does not clearly name the same company.
+        - If wikipedia_page returns "not_found", no article could be confidently matched at all -
+          say so in your brief and move straight to the official website. If it returns "rejected",
+          a candidate article was found but failed verification (wrong entity, or not an
+          organisation) - same response: note the gap, move on, and do NOT retry wikipedia_page with
+          another title or a looser spelling. NEVER substitute a similarly-named company's article -
+          a wrong company is far worse than a missing one.
+        - Never take a company's identity (official name, founding year, size) from any page other
+          than the company's own site or a wikipedia_page result with status "ok".
         - Stay within a total of about 8 fetches. Stop as soon as you can describe the company's
           mission, products/services, industry, size, and location with reasonable confidence.
 
