@@ -84,8 +84,8 @@ paste job advert ─► scrub personal info ─► LLM: extract JobInfo ──�
 ## Installation
 
 ```powershell
-git clone https://github.com/<your-user>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com//Atabak-dev//AI_Resume_Builder.git
+cd AI_Resume_Builder
 
 python -m venv .venv
 .\.venv\Scripts\activate          # Windows
