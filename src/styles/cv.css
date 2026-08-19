@@ -70,6 +70,43 @@ body {
     text-decoration: none;
 }
 
+/* ===== Header with profile picture ===== */
+
+.cv-header {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 18px;
+}
+
+.cv-header td {
+    vertical-align: middle;
+}
+
+.cv-header-photo {
+    padding-right: 6mm;
+}
+
+.profile-picture {
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    border: 1px solid var(--border);
+}
+
+.cv-header-text .subtitle,
+.cv-header-text .title,
+.cv-header-text .contact-info {
+    text-align: left;
+}
+
+.cv-header-text .title {
+    margin-bottom: 4px;
+}
+
+.cv-header-text .contact-info {
+    margin-bottom: 0;
+}
+
 
 /* ===== Sections ===== */
 

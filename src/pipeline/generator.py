@@ -6,6 +6,8 @@ import logging
 import os
 import yaml
 import json
+import base64
+import mimetypes
 
 # Import JobInfo and CVScoreResponse from the correct module path
 from src.pipeline.models import CVScoreResponse, CompanyInfo, JobInfo
@@ -61,6 +63,11 @@ class Generator_Handler:
 
 
         self.CONTACT_MARKER = "<<contact_info>>"
+        self.PHOTO_MARKER = "<<photo>>"
+
+        # Cache for _load_profile_picture(); populated on first use.
+        self._profile_picture_cache: Optional[Dict[str, Any]] = None
+        self._profile_picture_loaded = False
 
         # Closing valediction appended locally to the cover letter, keyed by language.
         # The prompts tell the LLM never to emit one, so this is the only place it comes from.
@@ -135,6 +142,45 @@ class Generator_Handler:
 """
 
 
+    def _extract_generated_text(self, response: Dict[str, Any], what: str) -> str:
+        """Pull the assistant message text out of an LLM completion response.
+
+        Raises ValueError carrying the endpoint's own ``finish_reason``/``usage``
+        whenever the text is missing or blank. Reasoning models answer with
+        ``content: null`` and ``finish_reason: "length"`` when the whole
+        ``max_completion_tokens`` budget went into reasoning, which otherwise
+        surfaced only as an ``AttributeError`` on ``None.strip()``.
+
+        Args:
+            response: Parsed JSON body from ``create_completion()``.
+            what: Human-readable name of the generation, used in the error text.
+
+        Returns:
+            The generated text.
+        """
+        choices = response.get("choices") or []
+        if not choices:
+            error_msg = f"LLM did not return a valid response for {what}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        choice = choices[0]
+        content = (choice.get("message") or {}).get("content")
+
+        if not content or not content.strip():
+            finish_reason = choice.get("finish_reason")
+            usage = response.get("usage", {})
+            error_msg = (
+                f"LLM returned empty content for {what} "
+                f"(finish_reason={finish_reason!r}, usage={usage}). "
+                "A 'length' finish_reason here means the token budget was spent on "
+                "reasoning - raise max_tokens for this use case in llm_config.json."
+            )
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        return content
+
     def _humanize_text(self, text:str) -> str:
         TRANSLATION_TABLE = str.maketrans({
             "—": ",",
@@ -198,14 +244,9 @@ class Generator_Handler:
         logger.debug("LLM response received for cover letter generation")
 
         # Extract generated markdown text
-        if "choices" in response and response["choices"]:
-            generated = response["choices"][0].get("message", {}).get("content", "")
-            coverletter_markdown = self._humanize_text(generated.strip())
-            logger.debug("Cover letter markdown generated successfully")
-        else:
-            error_msg = "LLM did not return a valid response for cover letter generation"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+        generated = self._extract_generated_text(response, "cover letter generation")
+        coverletter_markdown = self._humanize_text(generated.strip())
+        logger.debug("Cover letter markdown generated successfully")
 
         # Add personal info to the generated cover letter
         logger.info("Adding personal information to cover letter")
@@ -288,14 +329,9 @@ class Generator_Handler:
         logger.debug("LLM response received for CV generation")
 
         # Extract generated markdown text
-        if "choices" in response and response["choices"]:
-            generated = response["choices"][0].get("message", {}).get("content", "")
-            cv_markdown = self._humanize_text(generated.strip())
-            logger.debug("CV markdown generated successfully")
-        else:
-            error_msg = "LLM did not return a valid response for CV generation"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+        generated = self._extract_generated_text(response, "CV generation")
+        cv_markdown = self._humanize_text(generated.strip())
+        logger.debug("CV markdown generated successfully")
 
         # Keep the LLM's own output, before any identity is merged in. test_cv()
         # sends the CV back to the LLM for scoring, so it must be given this
@@ -366,16 +402,9 @@ class Generator_Handler:
             github_username = github_url.rstrip("/").split("/")[-1]
 
         # Determine location based on USER_CONFIG setting
-        user_config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'USER_CONFIG.json')
-
-        try:
-            with open(user_config_path, 'r', encoding='utf-8') as f:
-                user_config = json.load(f)
-                location_source = user_config.get('location', 'user')
-                contact_fields = user_config.get('contact_fields', {})
-        except Exception:
-            location_source = 'user'
-            contact_fields = {}
+        user_config = self._load_user_config()
+        location_source = user_config.get('location', 'user')
+        contact_fields = user_config.get('contact_fields', {})
 
         include_location = contact_fields.get('location', True)
         include_phone = contact_fields.get('phone', True)
@@ -430,14 +459,77 @@ class Generator_Handler:
         if include_github and github_url:
             contact_parts.append(f"[{github_username or 'GitHub'}]({github_url})")
         contact = " | ".join(contact_parts)
-        
-        # Create personal info section
-        personal_info_section = f'# {name}\n{contact}'
 
-        # add personal info 
+        # Create personal info section. The photo marker is only emitted when a
+        # picture is actually configured and loadable - make_html_cv() falls back
+        # to the plain centered header whenever it's absent.
+        name_line = f'# {name}'
+        if self._load_profile_picture() is not None:
+            name_line = f'{self.PHOTO_MARKER}\n{name_line}'
+        personal_info_section = f'{name_line}\n{contact}'
+
+        # add personal info
         cv_markdown = cv_markdown.replace(r"# {personal_info}", personal_info_section)
         return cv_markdown
-    
+
+    def _load_user_config(self) -> Dict[str, Any]:
+        """Load USER_CONFIG.json, resolved relative to this file (not CWD).
+
+        Returns an empty dict on any error so callers can apply their own defaults.
+        """
+        user_config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'USER_CONFIG.json')
+        try:
+            with open(user_config_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _load_profile_picture(self) -> Optional[Dict[str, Any]]:
+        """Load and base64-encode the configured profile picture, if any.
+
+        Reads the ``profile_picture`` block from USER_CONFIG.json. Returns None
+        whenever the feature is disabled or the photo can't be loaded - a bad
+        or missing path must never fail CV generation, only omit the photo.
+        The result is cached on the instance since this is called once per
+        markdown injection and again per HTML render of the same CV.
+        """
+        if self._profile_picture_loaded:
+            return self._profile_picture_cache
+
+        self._profile_picture_loaded = True
+        config = self._load_user_config().get('profile_picture', {})
+
+        if not config.get('enabled', False):
+            return None
+
+        path = config.get('path', '')
+        if not path:
+            logger.warning("profile_picture.enabled is true but no path is configured")
+            return None
+
+        if not os.path.isabs(path):
+            path = os.path.join(os.path.dirname(__file__), '..', '..', path)
+
+        mime_type, _ = mimetypes.guess_type(path)
+        if not mime_type or not mime_type.startswith("image/"):
+            logger.warning(f"Profile picture path is not a recognized image type: {path}")
+            return None
+
+        try:
+            with open(path, 'rb') as f:
+                encoded = base64.b64encode(f.read()).decode("ascii")
+        except Exception as e:
+            logger.warning(f"Could not load profile picture from {path}: {e}")
+            return None
+
+        self._profile_picture_cache = {
+            "data_uri": f"data:{mime_type};base64,{encoded}",
+            "width_mm": config.get("width_mm", 25),
+            "height_mm": config.get("height_mm", 32),
+            "corner_radius_mm": config.get("corner_radius_mm", 2),
+        }
+        return self._profile_picture_cache
+
     def find_wanted_skills(self):
         """find what skills are needed but is missing in the cv"""
         pass
@@ -458,6 +550,74 @@ class Generator_Handler:
             text = self.ITALIC_RE.sub(r'<span class="italic">\1</span>', text)
 
         return text
+
+    def _render_header_html_cv(self, lines: List[str]) -> "tuple[str, int]":
+        """Render the CV's opening block as a two-column photo + text header.
+
+        Scans the leading lines for the header block (``## subtitle``,
+        ``<<photo>>``, ``# name``, ``<<contact_info>> ...``), skipping blank
+        lines the same way the main make_html_cv() loop does. Returns
+        ``("", 0)`` - render nothing, consume nothing - unless the window
+        actually contains the photo marker and the picture loads
+        successfully; the normal per-line loop then renders the plain
+        centered header exactly as before the photo feature existed.
+
+        Returns:
+            A tuple of (header HTML, number of source lines consumed).
+        """
+        photo = self._load_profile_picture()
+        if photo is None:
+            return "", 0
+
+        subtitle_html = ""
+        title_html = ""
+        contact_html = ""
+        has_photo = False
+
+        i = 0
+        n = len(lines)
+        scanned = 0
+        while i < n and scanned < 6:
+            line = lines[i].strip()
+            if not line:
+                i += 1
+                continue
+            scanned += 1
+
+            if line == self.PHOTO_MARKER:
+                has_photo = True
+                i += 1
+                continue
+            if line.startswith("## "):
+                subtitle_html = f'<h2 class="subtitle">{line[3:].strip()}</h2>'
+                i += 1
+                continue
+            if line.startswith(f"{self.CONTACT_MARKER} "):
+                contact_html = self._render_contact_info_html_cv(line)
+                i += 1
+                continue
+            if line.startswith("# "):
+                title_html = f'<h1 class="title">{line[2:].strip()}</h1>'
+                i += 1
+                continue
+
+            break
+
+        if not has_photo:
+            return "", 0
+
+        header_html = (
+            '<table class="cv-header"><tr>'
+            f'<td class="cv-header-photo" style="width:{photo["width_mm"]}mm">'
+            '<div class="profile-picture" style="'
+            f'width:{photo["width_mm"]}mm;height:{photo["height_mm"]}mm;'
+            f'border-radius:{photo["corner_radius_mm"]}mm;'
+            f'background-image:url(\'{photo["data_uri"]}\')'
+            '"></div></td>'
+            f'<td class="cv-header-text">{subtitle_html}{title_html}{contact_html}</td>'
+            '</tr></table>'
+        )
+        return header_html, i
 
     def make_html_cv(self, markdown: str) -> str:
         """Convert markdown CV to HTML.
@@ -483,13 +643,18 @@ class Generator_Handler:
         n = len(lines)
         i = 0
 
+        header_html, consumed = self._render_header_html_cv(lines)
+        if consumed:
+            append(header_html)
+            i = consumed
+
         while i < n:
             line = lines[i].strip()
 
             if not line:
                 i += 1
                 continue
-                
+
             logger.debug(f"Processed {n} lines of CV markdown")
             # --------------------
             # Headings
@@ -512,6 +677,12 @@ class Generator_Handler:
                 append(
                     f'<h1 class="title">{line[2:].strip()}</h1>'
                 )
+                i += 1
+                continue
+
+            # A stray photo marker (e.g. the header prescan didn't consume it)
+            # is dropped rather than leaking into a <p> as literal text.
+            if line == self.PHOTO_MARKER:
                 i += 1
                 continue
 

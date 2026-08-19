@@ -48,3 +48,21 @@ job advert — the more complete it is, the more thorough the scrub.
 
 Keep `profile.txt` to a handful of paragraphs. It is prepended to every cover-letter
 request, so length here costs tokens on every run.
+
+## Optional: profile picture
+
+To show a photo beside your name on the CV, drop an image file anywhere under `data/`
+(it never goes to the LLM — only the CV's HTML/PDF) and point `USER_CONFIG.json`'s
+`profile_picture` block at it:
+
+```json
+"profile_picture": {
+  "enabled": true,
+  "path": "data/photo.jpg",
+  "width_mm": 25,
+  "height_mm": 32,
+  "corner_radius_mm": 2
+}
+```
+
+Leave `enabled: false` (the default) to keep the current centered, photo-less header.

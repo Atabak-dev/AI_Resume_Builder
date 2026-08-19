@@ -12,6 +12,13 @@
     "data": "data",
     "outputs": "outputs"
   },
+  "profile_picture": {
+    "enabled": true,
+    "path": "data/photo.jpg",
+    "width_mm": 25,
+    "height_mm": 32,
+    "corner_radius_mm": 2
+  },
   "scraping": {
     "company_website_timeout": 30,
     "request_delay": 1.0,

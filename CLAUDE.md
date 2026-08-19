@@ -91,7 +91,7 @@ Single-run interactive CLI. One invocation = one job application. Flow in
 | `.env` | `LLM_API_KEY` + connection details `LLM_MODEL`/`LLM_HOST`/`LLM_BASE_PATH`/`LLM_ENDPOINT`, plus `SEARCH_PROVIDER` (supports a comma-separated order and an `only:` pin — see `.env.example`) and the matching `BRAVE_API_KEY`/`TAVILY_API_KEY`/`SERPER_API_KEY` (gitignored) |
 | `llm_config.json` | Per-use-case sampling params. Its `model`/`endpoint`/`host`/`base_path` keys are committed empty — the env vars above override them, so no private endpoint reaches git |
 | `llm_prompts.yaml` | Every system/user prompt, keyed by task and language, including `company_research.system` for the tool-calling loop |
-| `USER_CONFIG.json` | `language` (`en`/`de`), `location` (`job`/`user`), `contact_fields.*` (booleans: `location`/`phone`/`email`/`linkedin`/`github` — which contact-line items to render on the CV), data/output dirs, plus `scraping.*` (timeout/delay/retries) and `research.*` (`enabled`, `max_iterations`, `max_fetches`, `max_searches`, `max_page_chars`, `search_results`) |
+| `USER_CONFIG.json` | `language` (`en`/`de`), `location` (`job`/`user`), `contact_fields.*` (booleans: `location`/`phone`/`email`/`linkedin`/`github` — which contact-line items to render on the CV), `profile_picture.*` (`enabled`, `path`, `width_mm`/`height_mm`/`corner_radius_mm` — the optional photo beside the name on the CV), data/output dirs, plus `scraping.*` (timeout/delay/retries) and `research.*` (`enabled`, `max_iterations`, `max_fetches`, `max_searches`, `max_page_chars`, `search_results`) |
 | `allowed_domains.txt` | Hosts pre-approved for company-research tool calls, one per line (`#` comments). Merged into `HostApprovalGate.AUTO_ALLOW` at the start of each run via `HostApprovalGate.load_domains_file()`, so listed hosts never trigger the interactive approval prompt |
 
 `llm_config.json` `use_cases` entries (`cv_generation`, `cover_letter_generation`,
@@ -145,6 +145,16 @@ the CV format is a fixed dialect the prompts are written against:
   real name and contact line.
 - `<<contact_info>>` (`self.CONTACT_MARKER`) — leads the contact line, rendered as
   `<div class="contact-info">` with `tel:`/`mailto:` links.
+- `<<photo>>` (`self.PHOTO_MARKER`) — a bare line injected before `# {name}` only when
+  `profile_picture.enabled` is true in `USER_CONFIG.json` and the configured `path` loads
+  successfully; the path/bytes never appear in `cv.md` itself, only a base64 `data:` URI built at
+  HTML-render time. `make_html_cv()`'s `_render_header_html_cv()` prescans the leading lines for
+  this marker before the normal per-line loop runs and, when found, renders subtitle/name/contact
+  together as a two-column `<table class="cv-header">` (photo left, text left-aligned) instead of
+  the normal centered siblings — see `_load_profile_picture()` for the loading/caching logic. Any
+  failure (missing file, unreadable, non-image) logs a warning and falls back to the plain centered
+  header exactly as if the feature were off; it never raises. Cover letters do not get a photo —
+  `make_html_coverletter()` is untouched.
 - `#### Title | Company | Location` followed by `_dates_` — becomes a two-column
   `<table class="cv-entry">`.
 

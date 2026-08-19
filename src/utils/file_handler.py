@@ -65,17 +65,36 @@ class FileHandler:
             str: Formatted file caption
         """
         logger.info(f"Generating file caption for {doc}: {name} - {job_title}")
-        name_part = "_".join([part.capitalize() for part in name.split()])
-        
+        name_part = "_".join([part.capitalize() for part in (name or "").split()])
+
         # Remove (f/m/d), dashes, underscores, and other special characters from job_title
-        job_title = re.sub(r'[\-\s_]+', ' ', job_title)
+        job_title = re.sub(r'[\-\s_]+', ' ', job_title or "")
         job_title = re.sub(r'\([^)]*\)', '', job_title)
         job_title = "_".join(job_title.split())
-        
-        file_path = os.path.join(self.output_path,
-                                  f"{doc}_{name_part}_{job_title}.pdf"
-                                  )
+
+        # job_title is LLM output derived from an untrusted advert, so it can still
+        # carry characters Windows forbids in a filename - see _safe_file_stem().
+        stem = self._safe_file_stem(f"{doc}_{name_part}_{job_title}")
+
+        file_path = os.path.join(self.output_path, f"{stem}.pdf")
         return file_path
+
+    @staticmethod
+    def _safe_file_stem(stem: str, max_length: int = 100) -> str:
+        """Strip characters that can't go in a filename and cap the length.
+
+        The dangerous one on Windows is ``:``: ``open()`` does not fail on it,
+        it silently writes into an NTFS alternate data stream, so a title like
+        "Working Student: AI Engineering" leaves a 0-byte, extensionless file
+        where the PDF should be. ``\\`` and ``/`` would redirect the write into
+        a subdirectory; the rest raise OSError. The length cap keeps the full
+        path clear of the 260-character Windows limit.
+        """
+        stem = re.sub(r'[\\/:*?"<>|]+', '_', stem)
+        stem = re.sub(r'[\x00-\x1f]', '', stem)
+        stem = re.sub(r'_{2,}', '_', stem)
+        # Windows also rejects a trailing dot or space.
+        return stem[:max_length].strip(" ._") or "document"
 
     def save_markdown(self, markdown: str, file_name: str = "CV.md") -> str:
         """
