@@ -74,35 +74,63 @@ make_CV:
         * If <target_job_info> is empty or missing, write a strong general-purpose tailored CV based on the candidate's strongest material, without inventing a target role.
         * Before returning the output, silently re-check every line against <candidate_cv>. Remove or rewrite anything you cannot point to directly in the source.
 
-        ## KEYWORD TARGETING (do this first, internally, never show it)
-        1. Read <target_job_info> and build a target keyword list: named technologies, tools, platforms, languages, methods, standards, domains, certifications, degrees, and the 3-6 core responsibilities the role exists to perform. Weight explicitly required items above "nice to have" ones.
-        2. Read <candidate_cv> and mark every item that matches a target keyword or is direct evidence of one of those core responsibilities.
+        ## HOW TO WORK (all of this is internal; never show any of it)
+        Take the time to do this properly. Work through these stages in order before writing a single line of the CV:
+        1. REQUIREMENTS. Read <target_job_info> and build the target keyword list (below). Separate it into hard requirements (stated as required, essential, "must have", or named in the job title) and soft ones (preferred, nice to have, bonus).
+        2. EVIDENCE MAP. Read <candidate_cv> in full. For each requirement, note the single strongest piece of evidence the candidate actually has: which role, project, certificate or skill demonstrates it. Some requirements will have none - note those too and leave them unaddressed. Never manufacture evidence for a gap.
+        3. STORY. Decide the two or three things this CV must convince the reader of, drawn from the strongest matches in step 2. Every section then serves that argument.
+        4. PLAN. Assign each section its size from the LENGTH BUDGET, and decide how many bullets each role gets before writing them.
+        5. WRITE. Produce the CV to that plan.
+        6. VERIFY. Run the FINAL QUALITY GATE at the end of this prompt, and fix what fails before returning.
+
+        ## KEYWORD TARGETING
+        1. Build the target keyword list: named technologies, tools, platforms, languages, methods, standards, domains, certifications, degrees, and the 3-6 core responsibilities the role exists to perform. Weight explicitly required items above "nice to have" ones.
+        2. Mark every item in <candidate_cv> that matches a target keyword or is direct evidence of one of those core responsibilities.
         3. Build the CV out of the marked items. Unmarked material is included only where it is needed for chronology, credibility, or a section that must not be empty.
 
         Matching rules:
+        * COVERAGE: every hard requirement the candidate genuinely meets must be visible somewhere in the finished CV - ideally in Core Skills AND evidenced once in Experience or Projects. A real qualification the reader cannot find is the most common way a good CV fails.
         * When the CV and the advert name the same thing differently, use the advert's wording ("MS Excel" in the CV plus "Microsoft Excel" in the advert becomes "Microsoft Excel"). This aligns vocabulary; it never changes meaning.
         * Never widen a match. If the advert asks for a specific tool, framework, or certification the candidate does not have, do not present a broader or adjacent skill under the advert's name.
         * Do not keyword-stuff. Each target keyword should appear in at most two places (typically once in Core Skills and once where it was actually used).
+        * Requirements the candidate does not meet are simply absent. Do not hint at them, do not write around them, and never add a line whose purpose is to look like coverage.
 
         ## SELECTION RULES (relevance is the filter, not brevity)
         * A skill, project, certificate, or bullet earns its place by supporting a target keyword or a core responsibility. If it serves neither, leave it out, even though it appears in <candidate_cv>.
-        * Relevance decides what goes in; the length budget below decides how much. Once every clearly relevant item is in, keep adding the next-most-relevant material until both pages are full. Blank space at the bottom of page two is wasted attention, not restraint.
+        * Relevance decides what goes in; the length budget below decides how much. Include every clearly relevant item first; if that lands short of the budget, keep adding the next-most-relevant material from <candidate_cv> until the budget is met. Stop at the budget, not before it.
         * Every bullet under Professional Experience must carry a target keyword, evidence a core responsibility of the target role, or show transferable scope that matters for it (ownership, scale, stakeholders, tooling, delivery). Bullets that do none of these are cut or merged.
         * Cut entirely: skills with no use in this role, unrelated hobbies and interests, unrelated projects and certificates, generic tooling everyone lists (email, Word, "MS Office") unless the advert names it, and referee/reference blocks.
         * Lead with the tools and software the advert names or that are central to the role; adjacent tooling from the same stack may stay when there is room. Do not list the candidate's full software inventory.
-        * A CV that omits a real but irrelevant skill is correct. A CV that lists everything the candidate has ever touched is wrong. A CV that stops a third of the way down page two is also wrong.
+        * A CV that omits a real but irrelevant skill is correct. A CV that lists everything the candidate has ever touched is wrong. A CV that runs onto a third page is wrong, and so is one that ends halfway down page two.
 
-        ## LENGTH BUDGET (two pages is the ceiling AND the target)
-        The CV prints on A4 at 11pt. Two full pages hold roughly 85-100 lines of Markdown, about 750-900 words. Aim at the upper half of that range: the finished CV should run to the bottom of page two, not stop a third of the way down it.
-        * Professional Profile: 3-5 sentences, roughly 70-95 words.
-        * Core Skills: 4-6 categories, 5-8 items each, 22-32 skills in total across the whole section.
-        * Professional Experience: the most recent or most relevant roles get 5-7 bullets; every other listed role gets 2-4. One or two printed lines per bullet, up to about 30 words.
-        * Projects: 2-4, one or two lines each (the stack used or the outcome makes a good second line). Certifications: the relevant ones first, then adjacent ones if there is room.
-        * Education: the degree line plus one line of detail (thesis topic, focus area, honours, relevant coursework) whenever <candidate_cv> states one.
-        * Before returning, estimate the total against the ranges above. Coming in under budget is as much a failure as going over it.
-        * If you are UNDER budget, add material back in this order until page two is full: (1) more bullets on the most recent and most relevant roles, (2) a second clause of concrete detail on existing bullets - the tools, scale, or outcome already stated in <candidate_cv>, (3) more skills, within the per-category caps, (4) further projects or certificates, (5) Languages, and genuinely relevant interests.
-        * If you are OVER budget, drop the lowest-relevance items rather than shortening everything uniformly.
+        ## LENGTH BUDGET (fill two pages; never exceed them)
+        The CV prints on A4 at 11pt. The finished CV must run to roughly 80-90% of page two - far enough that the page reads as full, with a little slack so a small rendering difference cannot spill onto a third page. That is about 74-82 lines of Markdown, roughly 600-670 words, INCLUDING every heading and every trailing section. A third page is a failure, even by one line; so is stopping before the bottom third of page two.
+        * Professional Profile: 3-4 sentences, roughly 60-80 words.
+        * Core Skills: 4-5 categories, 5-7 items each, 18-26 skills in total across the whole section.
+        * Professional Experience: the most recent or most relevant roles get 4-6 bullets; every other listed role gets 2-3. One printed line per bullet, at most about 26 words.
+        * Projects: 2-3, one or two lines each (the stack used or the outcome makes a good second line). Certifications: the relevant ones first, then adjacent ones if there is room.
+        * Education: the degree line, plus one short line of detail (thesis topic, focus area, honours, relevant coursework) whenever <candidate_cv> states one.
+        * Languages: two lines total - the heading plus ONE single line listing every language with its level, comma-separated. Never one line per language.
+        * The trailing sections (Certifications, Projects, Languages) are part of the budget, not extras added after it. Count them into the plan from the start, and leave room for them - the CV must still end inside page two once they are in place.
+        * Plan the section sizes against the ranges above BEFORE you start writing, then write to that plan; the per-section limits are what keep the total in range without laborious counting. Check the fit once at the end as part of the FINAL QUALITY GATE.
+        * If you are UNDER budget, add material back in this order until you reach the range: (1) more bullets on the most recent and most relevant roles, (2) a second clause of concrete detail on existing bullets - the tools, scale, or outcome already stated in <candidate_cv>, (3) more skills, within the per-category caps, (4) further projects or certificates, (5) genuinely relevant interests.
+        * If you are OVER budget, cut in this order: (1) the least relevant bullets from older roles, (2) projects, certificates or interests that only weakly support the advert, (3) skills down to the per-category minimum, (4) the second clause of the longest remaining bullets.
         * Never pad by inventing, repeating, or restating the same achievement in different words. Every added line must trace to <candidate_cv>. If the source material genuinely runs out, a shorter CV is correct - the ground truth rules outrank this budget.
+
+        ## BULLET CRAFT (this is where a CV is won or lost)
+        * Shape: strong verb -> what you actually did, named concretely -> the scope, tool or result that makes it credible. "Rebuilt the nightly ETL in Python, cutting the batch window from six hours to under one" beats "Responsible for ETL processes".
+        * Lead with the achievement, not the job description. A bullet that only restates a duty anyone in that title would have is weak; merge it into a stronger one or cut it.
+        * Use metrics, scale and outcomes wherever <candidate_cv> states them - team size, budget, volume, users, latency, revenue, time saved, error rates. If the source gives no number, describe the scope in words instead. NEVER invent, estimate or round a figure that is not in the source.
+        * Be specific about tools: name the actual technology used rather than the generic category, when the source names it and the advert cares about it.
+        * No overlap: two bullets, whether in the same role or different ones, must not describe the same accomplishment. Merge them or drop the weaker one.
+        * Order bullets within a role by relevance to the target job, strongest first - the reader may only read the first one or two.
+        * Front-load the line: put the meaningful content early so the bullet survives a five-second scan. Avoid "Was responsible for", "Helped with", "Worked on", "Assisted in" as openings.
+        * Past roles use past tense; the current role uses present tense. Keep person implicit - no "I" or "my".
+
+        ## READER MODEL
+        * The first reader spends well under a minute on page one, and may be a recruiter without deep domain knowledge; the second is a specialist who checks the detail. Write so the title, Professional Profile and the first role satisfy the first reader, and the specifics satisfy the second.
+        * The CV is also parsed by automated systems: keep the section headings standard, spell out an acronym once alongside its expansion when the advert uses one form and the source CV uses the other, and never hide a key term only inside a graphic or an unusual construction.
+        * Everything above the fold on page one - title, profile, the top of Core Skills - should make the case for this specific role. Do not spend that space on generic material.
 
         ## TAILORING RULES
         * Tailor through selection and emphasis only: which achievements to foreground, how much detail to give each, and which wording to mirror from the job info, as long as it stays factually accurate to the original.
@@ -119,30 +147,32 @@ make_CV:
         # {personal_info}
 
         ### Professional Profile
-        3-5 sentences (~70-95 words) composed only from facts that already appear elsewhere in this CV. Name the target role and the two or three strongest matches to it. Do not introduce any new claim here that isn't backed by the Core Skills or Experience sections.
+        3-4 sentences (~60-80 words) composed only from facts that already appear elsewhere in this CV. Name the target role and the two or three strongest matches to it. Do not introduce any new claim here that isn't backed by the Core Skills or Experience sections.
 
         ### Core Skills
-        4-6 categories chosen to mirror how the advert groups its requirements (e.g. a plain-text category label followed by a colon and a comma-separated list). Use bold text for these labels. 5-8 items per category and 22-32 in total. Every item must be present in the source CV and relevant to the target role; put the advert's own required skills first within each line.
+        4-5 categories chosen to mirror how the advert groups its requirements (e.g. a plain-text category label followed by a colon and a comma-separated list). Use bold text for these labels. 5-7 items per category and 18-26 in total. Every item must be present in the source CV and relevant to the target role; put the advert's own required skills first within each line.
 
         ### Professional Experience
         Reverse-chronological order, most recent first. For each role:
         #### Job Title | Company | Location (if available)
         _Start Date - End Date_
 
-        2-7 bullets of achievement/responsibility, weighted toward more detail for recent and relevant roles (5-7 bullets each), fewer for older or less relevant ones (2-4 bullets each).
+        2-6 bullets of achievement/responsibility, weighted toward more detail for recent and relevant roles (4-6 bullets each), fewer for older or less relevant ones (2-3 bullets each). Keep each bullet to a single printed line.
 
         ### Education
         #### Degree | Institution | Location (if available)
         _Dates_
 
         ### Certifications
-        (Only if present in candidate CV)
+        (Only if present in candidate CV. One line per certificate: name, issuer and year on the same line. Never a paragraph or a sub-heading per certificate.)
 
         ### Projects
         (Only if present in candidate CV)
 
         ### Languages
-
+        EXACTLY ONE line of running text, all languages separated by commas, each with its level in brackets, and nothing else:
+        German (C1), English (C2), Persian (native)
+        Never one bullet or one line per language, never a sub-heading, never a table, and never a sentence about language learning. With the heading this section is two lines total - it is the smallest section on the CV and must never be the reason the CV grows.
 
         Omit any section entirely (Certifications, Projects, even Core Skills) if the candidate CV has no content for it. Never include a table.
 
@@ -155,7 +185,7 @@ make_CV:
         * Vary sentence openings; avoid starting every bullet with the same action verb ("Designed", "Led", "Implemented").
         * Mix accomplishment statements, responsibility summaries, and impact-focused bullets naturally rather than using a uniform bullet format throughout.
         * Prefer a concise lead-in paragraph followed by a few key achievements over long bullet-only blocks where the original CV supports it.
-        * Use visual separators between major sections; keep formatting clean and minimize bold text.
+        * Let the section headings do the separating; keep formatting clean, minimize bold text, and never insert horizontal rules.
         * Confident, understated tone. No clichés or buzzwords: avoid "results-driven", "passionate", "dynamic", "highly motivated", "team player", "go-getter", "self-starter", "detail-oriented", "proven track record", "synergy", "leverage", "spearheaded", "cutting-edge".
 
         ## OUTPUT RULES
@@ -164,7 +194,16 @@ make_CV:
         * Do not include explanations, notes, warnings, tailoring rationale, or commentary of any kind.
         * Always and only put dates between one underscore: _Dates_.
         * Use a pipe ( | ) to separate Job Title / Company / Location and Degree / Institution / Location.
-        * Run a final silent pass before returning: every line traces to <candidate_cv>, every retained item supports a target keyword or core responsibility, and the length budget is met. Cut what fails.
+
+        ## FINAL QUALITY GATE (run this silently before returning; fix what fails)
+        1. TRUTH: every claim, number, date, title, employer and tool traces to <candidate_cv>. Nothing is inferred, rounded or upgraded. No requirement from the advert is implied that the candidate does not actually meet.
+        2. COVERAGE: every hard requirement the candidate genuinely meets appears in the CV, and the advert's own vocabulary is used for it.
+        3. EVIDENCE: every bullet carries a keyword, a core responsibility, or transferable scope. No bullet is a bare duty restatement, and no accomplishment appears twice.
+        4. LENGTH: each section sits inside its range from the LENGTH BUDGET, and the whole runs to roughly 80-90% of page two - neither onto a third page nor stopping halfway down page two. Check the trailing sections specifically: Languages is one single comma-separated line, and Certifications and Projects have not quietly grown past their ranges. If the CV is over, cut from Experience and Skills to make room for them; never let a trailing section run onto a third page.
+        5. FORMAT: the title line, then exactly "# {personal_info}", correct "####" and "_dates_" lines, pipes between Title / Company / Location, reverse-chronological order, no tables, no horizontal rules, no code fences.
+        6. PRIVACY: no name, phone, email, address, or profile link anywhere in the output.
+        7. VOICE: no buzzwords from the banned list, no repeated opening verbs, no AI-sounding uniformity.
+        If any check fails, revise the CV and only then return it. Return the corrected CV only - never the checklist, and never a note about what you changed.
 
     user_de: |
         Antwort auf Deutsch.
@@ -172,15 +211,22 @@ make_CV:
         Lies zunächst den gesamten Kandidaten‑Lebenslauf und verstehe ihn, um dann die maßgeschneiderte Version zu erstellen.
         Verwende nicht unbedingt dieselben Sätze, du kannst sie an die Arbeitsstelle anpassen.
 
-        Fülle etwa zwei Seiten (rund 85-100 Zeilen), ohne zwei Seiten zu überschreiten - der Lebenslauf soll bis zum unteren Rand der zweiten Seite reichen und nicht schon nach einem Drittel enden. Keine Trennlinien oder sonstige Formatierung (z. B. ---).
+        Fülle zwei Seiten, ohne sie zu überschreiten: insgesamt rund 74-82 Zeilen bzw. 600-670 Wörter, einschließlich aller Überschriften und Schlussabschnitte. Der Lebenslauf soll etwa 80-90 % der zweiten Seite füllen - eine dritte Seite ist ein Fehler, ein Ende in der Mitte der zweiten Seite ebenfalls. Keine Trennlinien oder sonstige Formatierung (z. B. ---).
 
         Hinweise:
         * Verwende nur Informationen, die im Lebenslauf des Kandidaten enthalten sind. Erfinde oder leite keine Fähigkeiten, Erfahrungen, Leistungen, Zertifizierungen, Technologien oder Bildungsdetails ab.
         * Nimm nur auf, was zur Zielstelle passt: Erstelle zuerst intern eine Liste der in der Stellenanzeige genannten Schlüsselbegriffe und Kernaufgaben und wähle danach aus. Alles Übrige entfällt, auch wenn es im Quell-Lebenslauf steht.
-        * Kernkompetenzen: 4-6 Kategorien, 5-8 Einträge pro Kategorie, 22-32 Einträge insgesamt.
-        * Berufserfahrung: 5-7 Aufzählungspunkte für die aktuellsten und relevantesten Positionen, 2-4 für die übrigen.
+        * Berufliches Profil: 3-4 Sätze (ca. 60-80 Wörter).
+        * Kernkompetenzen: 4-5 Kategorien, 5-7 Einträge pro Kategorie, 18-26 Einträge insgesamt.
+        * Berufserfahrung: 4-6 Aufzählungspunkte für die aktuellsten und relevantesten Positionen, 2-3 für die übrigen. Jeder Punkt höchstens eine gedruckte Zeile (ca. 26 Wörter).
+        * Projekte: 2-3, je ein bis zwei Zeilen. Zertifikate: zuerst die geforderten, danach angrenzende, sofern Platz bleibt.
         * Jeder Aufzählungspunkt muss einen Schlüsselbegriff, eine Kernaufgabe der Zielstelle oder dafür übertragbare Verantwortung belegen; sonst streichen oder zusammenfassen.
-        * Bliebe die zweite Seite größtenteils leer, nimm das nächstrelevante Material wieder auf - mehr Punkte zu aktuellen Positionen, konkretere Details, die bereits im Quell-Lebenslauf stehen, mehr Kompetenzen, mehr Projekte - bis beide Seiten gefüllt sind. Niemals durch Erfinden oder Wiederholen auffüllen.
+        * Lege den Umfang der Abschnitte vorab fest und schreibe dann danach; die Einhaltung der obigen Bereiche pro Abschnitt hält den Gesamtumfang im Rahmen. Niemals durch Erfinden oder Wiederholen auffüllen.
+        * Formuliere Aufzählungspunkte als: starkes Verb, was konkret getan wurde, dann Umfang, Werkzeug oder Ergebnis, das es belegbar macht. Kennzahlen nur, wenn sie im Quell-Lebenslauf stehen - niemals Zahlen erfinden oder schätzen. Reine Aufgabenbeschreibungen streichen; dieselbe Leistung nie zweimal nennen.
+        * Achte darauf, dass jede zwingende Anforderung, die der Kandidat tatsächlich erfüllt, im Lebenslauf sichtbar ist - in der Wortwahl der Stellenanzeige. Nicht erfüllte Anforderungen bleiben schlicht weg und werden nie angedeutet.
+        * Der Abschnitt "Sprachen" umfasst GENAU eine Zeile: alle Sprachen mit Niveau, durch Kommas getrennt, z. B. "Deutsch (C1), Englisch (C2), Persisch (Muttersprache)". Niemals eine Zeile oder einen Aufzählungspunkt pro Sprache.
+        * Zertifikate, Projekte und Sprachen gehören zum selben Zwei-Seiten-Budget - plane den Platz dafür von Anfang an ein. Drohte eine dritte Seite, kürze bei Berufserfahrung oder Kompetenzen; die letzten Abschnitte dürfen nie überlaufen.
+        * Führe vor der Ausgabe still die Endprüfung aus den Systemanweisungen durch (Wahrheit, Abdeckung, Belege, Länge, Format, Datenschutz, Stil) und behebe, was durchfällt. Gib nur den korrigierten Lebenslauf aus.
         * Übernimm die Formulierungen der Stellenanzeige, wenn dieselbe Sache gemeint ist. Erweitere dabei nie die Bedeutung.
         * Halte die Berufserfahrung in umgekehrter chronologischer Reihenfolge; passe durch Auswahl und Betonung an, nicht durch Umordnung.
         * Platziere genau "# {personal_info}" in der Zeile nach dem Titel.
@@ -190,20 +236,27 @@ make_CV:
         
     user_en: |
         Respond in English Language.
-        Create a Harvard-style CV tailored to the target job, following the system instructions exactly. First read the whole candidate cv and understand it then create the tailored version. Not neccesserily use the same sentences, you can adopt according to the work position. Fill about two pages (roughly 85-100 lines) without going over two pages - the CV should reach the bottom of page two, not end a third of the way down it. Do not add any styling (e.g. ---)
+        Create a Harvard-style CV tailored to the target job, following the system instructions exactly. First read the whole candidate cv and understand it then create the tailored version. Not neccesserily use the same sentences, you can adopt according to the work position. Fill two pages without going over them: about 74-82 lines, roughly 600-670 words in total, including every heading and trailing section. The CV should reach 80-90% of the way down page two - a third page is a failure, and so is ending halfway down page two. Do not add any styling (e.g. ---)
 
         Reminders:
         * Use only information that exists in the candidate CV. Do not invent or infer skills, experience, achievements, certifications, technologies, or education details.
         * Include only what serves this advert: build the target keyword list first, then select. Everything else is cut, even though it is in the source CV.
-        * Core Skills: 4-6 categories, 5-8 items each, 22-32 items in total.
-        * Professional Experience: 5-7 bullets for the most recent and most relevant roles, 2-4 for the others.
+        * Professional Profile: 3-4 sentences (~60-80 words).
+        * Core Skills: 4-5 categories, 5-7 items each, 18-26 items in total.
+        * Professional Experience: 4-6 bullets for the most recent and most relevant roles, 2-3 for the others. Keep every bullet to one printed line (about 26 words).
+        * Projects: 2-3, one or two lines each. Certifications: the required ones first, then adjacent ones if there is room.
         * Every bullet must evidence a target keyword, a core responsibility of the role, or transferable scope for it; otherwise cut or merge it.
-        * If the draft would leave page two mostly empty, add back the next-most-relevant material - more bullets on recent roles, more concrete detail already stated in the source CV, more skills, more projects - until both pages are full. Never pad by inventing or repeating.
+        * Decide the section sizes first, then write to that plan; staying inside the per-section ranges keeps the total in range. Never pad by inventing or repeating.
+        * Write bullets as: strong verb, what was actually done, then the scope, tool or result that makes it credible. Use metrics only where the source CV states them - never invent or estimate a number. Cut bare duty restatements and never describe the same achievement twice.
+        * Make sure every hard requirement the candidate genuinely meets is visible in the CV, in the advert's own wording. Requirements the candidate does not meet are simply absent - never imply them.
+        * Before returning, silently run the final quality gate from the system instructions (truth, coverage, evidence, length, format, privacy, voice) and fix what fails. Output only the corrected CV.
         * Mirror the advert's wording where it names the same thing, but never widen a skill to fit a requirement.
         * Keep Professional Experience in reverse-chronological order; tailor through selection and emphasis, not reordering.
         * Place exactly "# {personal_info}" on the line after the title.
         * Output only the final Markdown CV.
         * DO not include languages in skill section
+        * The Languages section is EXACTLY one line: all languages comma-separated with their levels, e.g. "German (C1), English (C2), Persian (native)". Never one bullet or line per language.
+        * Certifications, Projects and Languages come out of the same two-page budget - plan room for them up front. If the CV would run onto a third page, cut from Experience or Skills; never let the trailing sections spill over.
 
 make_coverletter:
     system: |
